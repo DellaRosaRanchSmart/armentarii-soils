@@ -13,7 +13,7 @@ const QUIMICOS = [
   ['pH', 'pH', ''], ['N_ppm', 'N', 'ppm'], ['P_ppm', 'P', 'ppm'], ['K_ppm', 'K', 'ppm'],
   ['Ca_ppm', 'Ca', 'ppm'], ['Mg_ppm', 'Mg', 'ppm'], ['S_ppm', 'S', 'ppm'], ['B_ppm', 'B', 'ppm'],
   ['Cu_ppm', 'Cu', 'ppm'], ['Fe_ppm', 'Fe', 'ppm'], ['Mn_ppm', 'Mn', 'ppm'], ['Mo_ppm', 'Mo', 'ppm'],
-  ['Zn_ppm', 'Zn', 'ppm'], ['MO_porc', 'Materia orgánica', '%'], ['Salinidad', 'Salinidad', ''],
+  ['Zn_ppm', 'Zn', 'ppm'], ['MO_porc', 'Materia orgánica', '%'], ['Salinidad', 'Salinidad (CE)', 'µS/cm'],
 ];
 const ESCALA = ['Nula', 'Baja', 'Media', 'Alta'];
 // Valores por defecto de las listas. Si en 5_Catalogos existe una Categoria con el mismo nombre
@@ -370,9 +370,14 @@ async function vistaPunto(id, jornadaId) {
     const campos = ['Potrero', 'Hora', 'Color', 'Humedad_Porc', ...CAMPO_SELECTS.map(c => c[0]), 'Suelo_Desnudo_Porc',
       'Pasto_Predominante', 'Cobertura_Pasto_Porc', ...QUIMICOS.map(q => q[0]), 'Observaciones'];
     p.f = Object.fromEntries(campos.map(k => [k, NUMERICOS.has(k) ? num(g(k)) : g(k)]));
-    const lat = num(g('lat')), lng = num(g('lng'));
+    const lat = num(g('lat'));
+    let lng = num(g('lng'));
     if ((lat === '') !== (lng === '')) return toast('Complete latitud y longitud', true);
     if (lat !== '' && (Math.abs(lat) > 90 || Math.abs(lng) > 180)) return toast('Coordenadas inválidas', true);
+    // Colombia está al oeste: la longitud es negativa. Los informes SOILO la escriben sin el signo (75.89 en vez de -75.89).
+    if (lng > 0 && lat > -5 && lat < 15 && confirm(`La longitud ${lng} es positiva (quedaría en Asia). ¿Cambiarla a -${lng} (Oeste)?`)) {
+      lng = -lng; frm.lng.value = String(lng);
+    }
     if (lat !== p.lat || lng !== p.lng) p.acc = ''; // coordenadas editadas a mano: precisión desconocida
     p.lat = lat; p.lng = lng;
     if (p.f.pH !== '' && (p.f.pH < 0 || p.f.pH > 14)) return toast('pH fuera de rango (0–14)', true);
@@ -537,6 +542,12 @@ async function vistaAjustes() {
       <button class="btn sec" id="cat">⟳ Actualizar catálogos</button>
     </div>
     <div class="card">
+      <h3>Importar históricos (CSV)</h3>
+      <p class="muted small">Archivos con los mismos encabezados de <b>0_Jornadas</b> o <b>1_Puntos_Muestreo</b> (punto decimal).
+        Importe primero las jornadas y luego los puntos; después pulse ⟳ Sincronizar.</p>
+      <label class="btn sec">⤒ Elegir CSV<input type="file" accept=".csv,text/csv" hidden id="imp"></label>
+    </div>
+    <div class="card">
       <h3>Respaldo</h3>
       <p class="muted small">Descarga todo lo capturado en este teléfono (incluye fotos) en un archivo JSON.</p>
       <button class="btn sec" id="exp">⤓ Exportar respaldo</button>
@@ -555,6 +566,11 @@ async function vistaAjustes() {
     try { const r = await apiGet({ action: 'ping' }); toast(`Conectado a "${r.spreadsheet}"`); } catch (err) { toast(err.message, true); }
   };
   $('#cat').onclick = async () => { try { await bajarCatalogos(); toast('Catálogos actualizados'); vistaAjustes(); } catch (err) { toast(err.message, true); } };
+  $('#imp').onchange = async e => {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    try { toast(await importarCSV(await file.text())); actualizarEstado(); } catch (err) { toast(err.message, true); }
+  };
   $('#exp').onclick = async () => {
     const data = { app: 'agronomia-el-rosario', version: APP_VERSION, exportado: new Date().toISOString(),
       records: await DB.all('records'), fotos: await DB.all('fotos'), deletes: await DB.kv('deletes', []) };
@@ -568,6 +584,54 @@ async function vistaAjustes() {
     for (const f of fotos) if (f.url && f.dataUrl) { delete f.dataUrl; await DB.put('fotos', f); }
     toast('Espacio liberado'); vistaAjustes();
   };
+}
+
+/** CSV simple (RFC 4180): comas, comillas dobles y saltos de línea dentro de comillas. */
+function parseCSV(txt) {
+  const rows = []; let row = [], cell = '', q = false;
+  txt = txt.replace(/^\uFEFF/, '');
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (q) { if (ch === '"') { if (txt[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+async function importarCSV(txt) {
+  const [head, ...data] = parseCSV(txt);
+  if (!head) throw new Error('Archivo vacío');
+  const H = head.map(h => h.trim());
+  const objs = data.map(r => Object.fromEntries(H.map((h, i) => [h, (r[i] ?? '').trim()])));
+  const ahora = Date.now();
+  if (H[0] === 'ID_Jornada') {
+    for (const o of objs) {
+      await DB.put('records', { id: o.ID_Jornada, tipo: 'jornada', sync: 'pending', updatedAt: ahora,
+        f: { Fecha: o.Fecha, Responsable: o.Responsable, Clima: o.Clima, Lluvia_24h: num(o.Lluvia_24h), Estado: o.Estado, Notas: o.Notas } });
+    }
+    return `${objs.length} jornadas importadas. Pulse ⟳ Sincronizar.`;
+  }
+  if (H[0] === 'ID_Punto') {
+    const jornadas = new Set((await DB.all('records')).filter(r => r.tipo === 'jornada').map(r => r.id));
+    const faltan = [...new Set(objs.map(o => o.ID_Jornada))].filter(j => !jornadas.has(j));
+    if (faltan.length) throw new Error(`Primero importe las jornadas: ${faltan.join(', ')}`);
+    let alertas = 0;
+    for (const o of objs) {
+      const [la, lo] = (o.Ubicacion || '').split(',').map(num);
+      let lng = lo === undefined ? '' : lo;
+      if (lng > 0 && la > -5 && la < 15) { lng = -lng; alertas++; } // longitud Oeste sin signo
+      const f = {};
+      for (const k of H) if (!['ID_Punto', 'ID_Jornada', 'Ubicacion', 'Foto_Suelo', 'Foto_Panoramica'].includes(k)) f[k] = NUMERICOS.has(k) ? num(o[k]) : o[k];
+      await DB.put('records', { id: o.ID_Punto, tipo: 'punto', jornadaId: o.ID_Jornada, f, lat: la === undefined ? '' : la, lng, acc: '',
+        fotoSuelo: '', fotoPano: '', arvenses: [], sync: 'pending', updatedAt: ahora });
+    }
+    return `${objs.length} puntos importados${alertas ? ` (${alertas} longitudes corregidas a Oeste)` : ''}. Pulse ⟳ Sincronizar.`;
+  }
+  throw new Error('La primera columna debe ser ID_Jornada o ID_Punto');
 }
 
 async function bajarCatalogos() {
@@ -666,7 +730,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);
