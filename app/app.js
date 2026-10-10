@@ -401,7 +401,7 @@ async function vistaPunto(id, jornadaId) {
 async function vistaAforo(id, jornadaId) {
   const nuevo = id === 'nuevo';
   const a = nuevo
-    ? { id: uid('AF'), tipo: 'aforo', jornadaId, potrero: '', area: '', metodo: await DB.kv('ultimoMetodo', 0.25), foto: '', muestras: [{ id: uid('D'), peso: '' }, { id: uid('D'), peso: '' }, { id: uid('D'), peso: '' }] }
+    ? { id: uid('AF'), tipo: 'aforo', jornadaId, potrero: '', area: '', metodo: await DB.kv('ultimoMetodo', 1), foto: '', muestras: [{ id: uid('D'), peso: '' }, { id: uid('D'), peso: '' }, { id: uid('D'), peso: '' }] }
     : await DB.get('records', id);
   if (!a) { location.hash = '#/'; return; }
   setTitle(nuevo ? 'Nuevo aforo' : 'Aforo', `#/jornada/${encodeURIComponent(a.jornadaId)}`);
@@ -416,7 +416,7 @@ async function vistaAforo(id, jornadaId) {
       <div class="fld"><span>Tamaño del marco <small>(m²)</small></span>
         <div class="row gap">
           <input name="metodo" type="text" inputmode="decimal" value="${esc(a.metodo)}" style="max-width:7em">
-          ${[0.25, 0.5, 1].map(v => `<button type="button" class="btn ghost small" data-m2="${v}">${String(v).replace('.', ',')} m²</button>`).join('')}
+          ${[1, 0.5, 0.25].map(v => `<button type="button" class="btn ghost small" data-m2="${v}">${String(v).replace('.', ',')} m²</button>`).join('')}
         </div></div>
       ${datalist('dlPot', lista('Potrero'))}
     </div>
@@ -666,7 +666,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

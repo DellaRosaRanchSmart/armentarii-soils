@@ -70,6 +70,6 @@ Desde ahí se puede capturar sin señal. Al volver la conexión la app sincroniz
 
 - Capture el GPS a cielo abierto y espere a que la precisión baje (ideal ≤ 10 m).
 - No borre los datos del navegador ni desinstale la app con datos pendientes. Ante la duda: **Ajustes › Exportar respaldo**.
-- El tamaño del marco queda guardado del último aforo (por defecto 0,25 m²; cámbielo si usa otro).
+- El tamaño del marco queda guardado del último aforo (por defecto 1 m²; con un toque se cambia a 0,5 o 0,25 m²).
 - Fotos públicas: por defecto las fotos de Drive solo las ven quienes tengan acceso a la carpeta. Para mostrarlas
   como imagen en Looker Studio cambie `PHOTOS_PUBLIC = true` en `Code.gs` (cualquiera con el enlace podrá verlas).
