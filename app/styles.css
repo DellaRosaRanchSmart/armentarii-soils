@@ -67,9 +67,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .gps { margin-top: 8px; display: grid; gap: 6px; }
 .foto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 .foto-prev img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
-.muestra { display: grid; grid-template-columns: 36px 1fr auto auto auto; gap: 6px; align-items: center; margin: 6px 0; }
+.muestra { display: grid; grid-template-columns: 30px 1fr 1fr auto auto; gap: 6px; align-items: center; margin: 8px 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.muestra .arvm { grid-column: 2 / 5; }
+.muestra .coord { grid-column: 5; }
+.mhead { display: grid; grid-template-columns: 30px 1fr 1fr auto auto; gap: 6px; margin: 4px 0 -4px; }
 .muestra .n { color: var(--muted); font-variant-numeric: tabular-nums; }
-.muestra .coord { min-width: 3.5em; }
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .kpis div { background: var(--bg); border-radius: 10px; padding: 10px; }
 .kpis span { display: block; font-size: 12px; color: var(--ink2); }

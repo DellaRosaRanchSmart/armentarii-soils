@@ -15,23 +15,30 @@ const QUIMICOS = [
   ['Cu_ppm', 'Cu', 'ppm'], ['Fe_ppm', 'Fe', 'ppm'], ['Mn_ppm', 'Mn', 'ppm'], ['Mo_ppm', 'Mo', 'ppm'],
   ['Zn_ppm', 'Zn', 'ppm'], ['MO_porc', 'Materia orgánica', '%'], ['Salinidad', 'Salinidad (CE)', 'µS/cm'],
 ];
-const ESCALA = ['Nula', 'Baja', 'Media', 'Alta'];
 // Valores por defecto de las listas. Si en 5_Catalogos existe una Categoria con el mismo nombre
 // (p. ej. "Compactacion"), se usan los Nombre_Item de la hoja en su lugar.
+// Opciones tomadas de las fichas de campo del voluntariado (Grupo Della Rosa).
 const LISTAS = {
-  Clima: ['Soleado', 'Parcialmente nublado', 'Nublado', 'Lluvioso'],
+  Clima: ['Soleado', 'Nublado', 'Lluvia'],
   Estado: ['Abierta', 'En laboratorio', 'Cerrada'],
-  Compactacion: ESCALA, Erosion: ESCALA, Encharcamiento: ESCALA, Costra_Superficial: ESCALA,
-  Actividad_Bio: ESCALA, Pisoteo: ESCALA, Pedregosidad: ESCALA,
-  Abundancia: ['Escasa', 'Moderada', 'Abundante', 'Dominante'],
-  Color: ['Negro', 'Pardo oscuro', 'Pardo', 'Pardo amarillento', 'Rojizo', 'Amarillento', 'Gris', 'Moteado'],
+  Color: ['Oscuro', 'Pardo', 'Claro', 'Rojizo', 'Gris / moteado'],
+  Humedad_Aparente: ['Seco', 'Húmedo', 'Saturado', 'Seco / Húmedo / Saturado (variable)'],
+  Compactacion: ['Baja', 'Media', 'Alta'],
+  Encharcamiento: ['No', 'Sí'],
+  Erosion: ['Ninguna', 'Leve', 'Moderada', 'Severa'],
+  Costra_Superficial: ['No', 'Sí'],
+  Actividad_Bio: ['Lombrices', 'Hormigas', 'Termitas', 'Estiércol en descomposición', 'Ninguna'],
+  Pisoteo: ['No', 'Poco', 'Mucho'],
+  Pedregosidad: ['No', 'Poca', 'Mucha'],
+  Abundancia: ['Dominante', 'Frecuente', 'Escasa'],
+  Estado_Potrero: ['Recién pastoreado', 'En descanso', 'Listo para pastoreo'],
 };
 const CAMPO_SELECTS = [
-  ['Compactacion', 'Compactación'], ['Erosion', 'Erosión'], ['Encharcamiento', 'Encharcamiento'],
+  ['Humedad_Aparente', 'Humedad aparente'], ['Compactacion', 'Dureza / compactación'], ['Erosion', 'Erosión'], ['Encharcamiento', 'Encharcamiento'],
   ['Costra_Superficial', 'Costra superficial'], ['Actividad_Bio', 'Actividad biológica'],
-  ['Pisoteo', 'Pisoteo'], ['Pedregosidad', 'Pedregosidad'],
+  ['Pisoteo', 'Pisoteo / caminos de ganado'], ['Pedregosidad', 'Pedregosidad'],
 ];
-const NUMERICOS = new Set([...QUIMICOS.map(q => q[0]), 'Humedad_Porc', 'Suelo_Desnudo_Porc', 'Cobertura_Pasto_Porc', 'Lluvia_24h']);
+const NUMERICOS = new Set([...QUIMICOS.map(q => q[0]), 'Humedad_Porc', 'Suelo_Desnudo_Porc', 'Cobertura_Pasto_Porc', 'Lluvia_24h', 'Precision_GPS_m']);
 
 let CATALOGO = []; // [{Categoria, Nombre_Item, Descripcion_Cientifica, Area_Ha}]
 let dirty = false;
@@ -410,6 +417,7 @@ async function vistaAforo(id, jornadaId) {
     : await DB.get('records', id);
   if (!a) { location.hash = '#/'; return; }
   setTitle(nuevo ? 'Nuevo aforo' : 'Aforo', `#/jornada/${encodeURIComponent(a.jornadaId)}`);
+  a.x = Object.assign({ lat: '', lng: '', acc: '', pasto: '', estado: '', dias: '', ms: '', obs: '' }, a.x);
   view().innerHTML = `
   <form id="frm">
     <div class="card">
@@ -423,19 +431,34 @@ async function vistaAforo(id, jornadaId) {
           <input name="metodo" type="text" inputmode="decimal" value="${esc(a.metodo)}" style="max-width:7em">
           ${[1, 0.5, 0.25].map(v => `<button type="button" class="btn ghost small" data-m2="${v}">${String(v).replace('.', ',')} m²</button>`).join('')}
         </div></div>
-      ${datalist('dlPot', lista('Potrero'))}
+      <div class="gps">
+        <button type="button" class="btn sec" id="btnGpsC">📍 Ubicación del centro del potrero</button>
+        <div id="gpsC" class="muted small">${a.x.lat !== '' ? `${coordTxt(a.x.lat, a.x.lng)}${a.x.acc ? ` · ±${Math.round(a.x.acc)} m` : ''}` : 'Sin ubicación'}</div>
+        <details><summary class="small muted">Ingresar coordenadas a mano</summary>
+          <div class="grid2">${fNum('clat', 'Latitud', a.x.lat)}${fNum('clng', 'Longitud', a.x.lng)}</div></details>
+      </div>
+      <div class="grid2">
+        ${fTxt('pasto', 'Pasto predominante', a.x.pasto, 'dlPasto')}
+        ${fSel('estado', 'Estado del potrero', lista('Estado_Potrero'), a.x.estado)}
+        ${fNum('dias', 'Días de descanso', a.x.dias, '', 'placeholder="Si se sabe"')}
+        ${fNum('ms', 'Materia seca', a.x.ms, '% MS', 'placeholder="Si se mide"')}
+      </div>
+      ${datalist('dlPot', lista('Potrero'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', lista('Arvense'))}
     </div>
 
     <div class="card">
       <h3>Marcos pesados</h3>
       <p class="muted small">Agregue tantos marcos como lance (2, 3, 10…). Se promedian solo los que tienen peso.</p>
+      <div class="mhead small muted"><span>N°</span><span>Peso verde (g)</span><span>Altura (cm)</span></div>
       <div id="muestras"></div>
       <button type="button" class="btn sec" id="addM">＋ Agregar marco</button>
     </div>
 
     <div class="card result" id="res"></div>
 
-    <div class="card">${fotoWidget('foto', a.foto, 'Foto general del potrero')}</div>
+    <div class="card">${fotoWidget('foto', a.foto, 'Foto general del potrero')}
+      <label class="fld"><span>Observaciones (arvenses predominantes, indicadores del suelo, otras)</span>
+      <textarea name="obs" rows="3">${esc(a.x.obs)}</textarea></label></div>
 
     <div class="row gap sticky"><button class="btn">Guardar aforo</button>
       ${nuevo ? '' : '<button type="button" class="btn danger ghost" id="btnDel">Eliminar</button>'}</div>
@@ -444,9 +467,11 @@ async function vistaAforo(id, jornadaId) {
   const mRow = (m, i) => `<div class="muestra" data-id="${esc(m.id)}">
       <span class="n">#${i + 1}</span>
       <input name="peso" type="text" inputmode="decimal" placeholder="Peso (g)" value="${esc(m.peso)}" aria-label="Peso marco ${i + 1} en gramos">
+      <input name="altura" type="text" inputmode="decimal" placeholder="Altura (cm)" value="${esc(m.altura ?? '')}" aria-label="Altura del pasto marco ${i + 1} en cm">
       <button type="button" class="btn ghost small" data-gps title="Ubicación de este marco">📍</button>
-      <span class="small muted coord" data-lat="${esc(m.lat ?? '')}" data-lng="${esc(m.lng ?? '')}">${m.lat != null && m.lat !== '' ? '✓ GPS' : ''}</span>
       <button type="button" class="btn ghost small danger" data-del aria-label="Quitar marco">✕</button>
+      <input name="arvm" class="arvm" value="${esc(m.arvenses ?? '')}" placeholder="Arvenses en el marco (opcional)" list="dlArv" autocomplete="off">
+      <span class="small muted coord" data-lat="${esc(m.lat ?? '')}" data-lng="${esc(m.lng ?? '')}">${m.lat != null && m.lat !== '' ? '✓ GPS' : ''}</span>
     </div>`;
   const renum = () => $$('.muestra', frm).forEach((el, i) => ($('.n', el).textContent = `#${i + 1}`));
   $('#muestras').innerHTML = a.muestras.map(mRow).join('');
@@ -461,6 +486,7 @@ async function vistaAforo(id, jornadaId) {
         <div><span>Forraje verde</span><b>${fmt(c.kgHa, 0)} kg/ha</b></div>
         <div><span>Oferta total del potrero</span><b>${c.oferta !== '' ? fmt(c.oferta, 0) + ' kg' : '—'}</b></div>
       </div>
+      ${num(frm.ms.value) !== '' && c.kgHa !== '' ? `<p class="small">Materia seca: <b>${fmt(c.kgHa * num(frm.ms.value) / 100, 0)} kg MS/ha</b>${c.oferta !== '' ? ` · ${fmt(c.oferta * num(frm.ms.value) / 100, 0)} kg MS en el potrero` : ''}</p>` : ''}
       ${c.oferta === '' && c.kgHa !== '' ? '<p class="muted small">Sin área del potrero: se reporta solo kg/ha.</p>' : ''}
       ${c.cv !== '' ? `<p class="muted small">Variabilidad entre marcos (CV): ${fmt(c.cv, 0)} %${c.cv > 40 ? ' — alta, conviene lanzar más marcos.' : ''}</p>` : ''}`;
   };
@@ -485,6 +511,16 @@ async function vistaAforo(id, jornadaId) {
       catch (err) { sp.textContent = ''; toast(err.message, true); }
     }
   });
+  $('#btnGpsC').onclick = async () => {
+    const b = $('#btnGpsC'); b.disabled = true; b.textContent = 'Buscando señal…';
+    try {
+      const c = await leerGPS(c => ($('#gpsC').textContent = `${coordTxt(c.lat, c.lng)} · ±${Math.round(c.acc)} m (afinando…)`));
+      frm.clat.value = c.lat.toFixed(6); frm.clng.value = c.lng.toFixed(6);
+      a.x.lat = num(frm.clat.value); a.x.lng = num(frm.clng.value); a.x.acc = c.acc;
+      $('#gpsC').textContent = `${coordTxt(c.lat, c.lng)} · ±${Math.round(c.acc)} m`; dirty = true;
+    } catch (err) { toast(err.message, true); }
+    b.disabled = false; b.textContent = '📍 Ubicación del centro del potrero';
+  };
   $('#addM').onclick = () => {
     $('#muestras').insertAdjacentHTML('beforeend', mRow({ id: uid('D'), peso: '' }, $$('.muestra', frm).length));
     $$('[name=peso]', frm).pop().focus();
@@ -498,11 +534,19 @@ async function vistaAforo(id, jornadaId) {
     a.area = num(frm.area.value);
     a.metodo = num(frm.metodo.value);
     a.foto = frm.foto.value;
+    let clat = num(frm.clat.value), clng = num(frm.clng.value);
+    if ((clat === '') !== (clng === '')) return toast('Complete latitud y longitud del centro', true);
+    if (clng > 0 && clat > -5 && clat < 15 && confirm(`La longitud ${clng} es positiva (quedaría en Asia). ¿Cambiarla a -${clng} (Oeste)?`)) { clng = -clng; frm.clng.value = String(clng); }
+    if (clat !== a.x.lat || clng !== a.x.lng) a.x.acc = '';
+    a.x = { lat: clat, lng: clng, acc: a.x.acc, pasto: frm.pasto.value.trim(), estado: frm.estado.value, dias: num(frm.dias.value),
+      ms: num(frm.ms.value), obs: frm.obs.value.trim() };
+    if (a.x.ms !== '' && (a.x.ms <= 0 || a.x.ms > 100)) return toast('% de materia seca debe estar entre 0 y 100', true);
     if (!a.potrero) return toast('Indique el potrero', true);
     if (!(a.metodo > 0)) return toast('Indique el tamaño del marco en m²', true);
     a.muestras = $$('.muestra', frm).map(el => {
       const c = $('.coord', el);
-      return { id: el.dataset.id, peso: num($('[name=peso]', el).value), lat: num(c.dataset.lat), lng: num(c.dataset.lng) };
+      return { id: el.dataset.id, peso: num($('[name=peso]', el).value), altura: num($('[name=altura]', el).value),
+        arvenses: $('[name=arvm]', el).value.trim(), lat: num(c.dataset.lat), lng: num(c.dataset.lng) };
     }).filter(m => m.peso !== '');
     if (!a.muestras.length) return toast('Ingrese al menos un peso', true);
     if (a.muestras.some(m => m.peso < 0)) return toast('Hay pesos negativos', true);
@@ -543,8 +587,9 @@ async function vistaAjustes() {
     </div>
     <div class="card">
       <h3>Importar históricos (CSV)</h3>
-      <p class="muted small">Archivos con los mismos encabezados de <b>0_Jornadas</b> o <b>1_Puntos_Muestreo</b> (punto decimal).
-        Importe primero las jornadas y luego los puntos; después pulse ⟳ Sincronizar.</p>
+      <p class="muted small">Archivos con los encabezados de las pestañas (punto decimal). Orden: <b>0_Jornadas</b> →
+        <b>1_Puntos_Muestreo</b> → <b>3_Aforos_Cabecera</b> → <b>4_Aforos_Detalle</b>; después pulse ⟳ Sincronizar.
+        Volver a importar el mismo archivo actualiza, no duplica.</p>
       <label class="btn sec">⤒ Elegir CSV<input type="file" accept=".csv,text/csv" hidden id="imp"></label>
     </div>
     <div class="card">
@@ -626,12 +671,46 @@ async function importarCSV(txt) {
       if (lng > 0 && la > -5 && la < 15) { lng = -lng; alertas++; } // longitud Oeste sin signo
       const f = {};
       for (const k of H) if (!['ID_Punto', 'ID_Jornada', 'Ubicacion', 'Foto_Suelo', 'Foto_Panoramica'].includes(k)) f[k] = NUMERICOS.has(k) ? num(o[k]) : o[k];
-      await DB.put('records', { id: o.ID_Punto, tipo: 'punto', jornadaId: o.ID_Jornada, f, lat: la === undefined ? '' : la, lng, acc: '',
+      await DB.put('records', { id: o.ID_Punto, tipo: 'punto', jornadaId: o.ID_Jornada, f, lat: la === undefined ? '' : la, lng, acc: num(o.Precision_GPS_m),
         fotoSuelo: '', fotoPano: '', arvenses: [], sync: 'pending', updatedAt: ahora });
     }
     return `${objs.length} puntos importados${alertas ? ` (${alertas} longitudes corregidas a Oeste)` : ''}. Pulse ⟳ Sincronizar.`;
   }
-  throw new Error('La primera columna debe ser ID_Jornada o ID_Punto');
+  if (H[0] === 'ID_Aforo') {
+    const all = await DB.all('records');
+    const jornadas = new Set(all.filter(r => r.tipo === 'jornada').map(r => r.id));
+    const faltan = [...new Set(objs.map(o => o.ID_Jornada))].filter(j => !jornadas.has(j));
+    if (faltan.length) throw new Error(`Primero importe las jornadas: ${faltan.join(', ')}`);
+    for (const o of objs) {
+      const prev = all.find(r => r.id === o.ID_Aforo);
+      const [la, lo] = (o.Ubicacion || '').split(',').map(num);
+      let lng = lo === undefined ? '' : lo;
+      if (lng > 0 && la > -5 && la < 15) lng = -lng;
+      await DB.put('records', { id: o.ID_Aforo, tipo: 'aforo', jornadaId: o.ID_Jornada, potrero: o.Potrero, area: num(o.Area_Ha),
+        metodo: num(o.Metodo_M2) || 1, foto: '', muestras: prev ? prev.muestras : [],
+        x: { lat: la === undefined ? '' : la, lng, acc: '', pasto: o.Pasto_Predominante || '', estado: o.Estado_Potrero || '',
+          dias: num(o.Dias_Descanso), ms: num(o.MS_Porc), obs: o.Observaciones || '' },
+        sync: 'pending', updatedAt: ahora });
+    }
+    return `${objs.length} aforos importados. Ahora importe sus marcos (4_Aforos_Detalle).`;
+  }
+  if (H[0] === 'ID_Detalle') {
+    const porAforo = {};
+    objs.forEach(o => (porAforo[o.ID_Aforo] = porAforo[o.ID_Aforo] || []).push(o));
+    for (const [idA, filas] of Object.entries(porAforo)) {
+      const a = await DB.get('records', idA);
+      if (!a) throw new Error(`Primero importe el aforo ${idA}`);
+      a.muestras = filas.map(o => {
+        const [la, lo] = (o.LatLong_Muestra || '').split(',').map(num);
+        return { id: o.ID_Detalle, peso: num(o.Peso_g), altura: num(o.Altura_cm), arvenses: o.Arvenses_Marco || '',
+          lat: la === undefined ? '' : la, lng: lo === undefined ? '' : (lo > 0 && la > -5 && la < 15 ? -lo : lo) };
+      }).filter(m => m.peso !== '');
+      a.sync = 'pending'; a.updatedAt = ahora;
+      await DB.put('records', a);
+    }
+    return `${objs.length} marcos importados en ${Object.keys(porAforo).length} aforos. Pulse ⟳ Sincronizar.`;
+  }
+  throw new Error('La primera columna debe ser ID_Jornada, ID_Punto, ID_Aforo o ID_Detalle');
 }
 
 async function bajarCatalogos() {
@@ -707,11 +786,15 @@ function construirFilas(lote, jornadas, urlFoto) {
     }
     if (r.tipo === 'aforo') {
       const c = calcAforo(r.muestras.map(m => m.peso), r.metodo, r.area);
+      const x = r.x || {};
       out.aforos.push({ ID_Aforo: r.id, ID_Jornada: r.jornadaId, Fecha: fecha, Potrero: r.potrero, Area_Ha: r.area,
         Metodo_M2: r.metodo, Promedio_Peso_g: round(c.prom, 1), Kg_Ha_FV: round(c.kgHa, 0), Oferta_Total_Kg: round(c.oferta, 0),
-        Foto_General: urlFoto[r.foto] || '', N_Muestras: c.n, CV_Porc: round(c.cv, 1) });
+        Foto_General: urlFoto[r.foto] || '', N_Muestras: c.n, CV_Porc: round(c.cv, 1),
+        Ubicacion: coordTxt(x.lat, x.lng), Pasto_Predominante: x.pasto || '', Estado_Potrero: x.estado || '', Dias_Descanso: x.dias ?? '',
+        MS_Porc: x.ms ?? '', Kg_MS_Ha: x.ms !== '' && x.ms != null && c.kgHa !== '' ? round(c.kgHa * x.ms / 100, 0) : '', Observaciones: x.obs || '' });
       for (const m of r.muestras)
-        out.detalles.push({ ID_Detalle: m.id, ID_Aforo: r.id, Peso_g: m.peso, LatLong_Muestra: coordTxt(m.lat, m.lng), Potrero: r.potrero, Fecha: fecha });
+        out.detalles.push({ ID_Detalle: m.id, ID_Aforo: r.id, Peso_g: m.peso, LatLong_Muestra: coordTxt(m.lat, m.lng), Potrero: r.potrero, Fecha: fecha,
+          Altura_cm: m.altura ?? '', Arvenses_Marco: m.arvenses || '' });
     }
   }
   return out;
@@ -730,7 +813,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

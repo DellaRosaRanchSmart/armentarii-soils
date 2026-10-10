@@ -25,10 +25,13 @@ var HEADERS = {
   puntos: ['ID_Punto', 'ID_Jornada', 'Hora', 'Ubicacion', 'Potrero', 'pH', 'N_ppm', 'P_ppm', 'K_ppm', 'Ca_ppm', 'Mg_ppm',
     'S_ppm', 'B_ppm', 'Cu_ppm', 'Fe_ppm', 'Mn_ppm', 'Mo_ppm', 'Zn_ppm', 'MO_porc', 'Salinidad', 'Color', 'Humedad_Porc',
     'Compactacion', 'Erosion', 'Encharcamiento', 'Costra_Superficial', 'Suelo_Desnudo_Porc', 'Actividad_Bio', 'Pisoteo',
-    'Pedregosidad', 'Pasto_Predominante', 'Cobertura_Pasto_Porc', 'Foto_Suelo', 'Foto_Panoramica', 'Observaciones'],
-  arvenses: ['ID_Arvense', 'ID_Punto', 'Nombre_Arvense', 'Cobertura_Porc', 'Abundancia', 'Foto_Arvense'],
-  aforos: ['ID_Aforo', 'ID_Jornada', 'Potrero', 'Area_Ha', 'Metodo_M2', 'Promedio_Peso_g', 'Kg_Ha_FV', 'Oferta_Total_Kg', 'Foto_General'],
-  detalles: ['ID_Detalle', 'ID_Aforo', 'Peso_g', 'LatLong_Muestra'],
+    'Pedregosidad', 'Pasto_Predominante', 'Cobertura_Pasto_Porc', 'Foto_Suelo', 'Foto_Panoramica', 'Observaciones',
+    // columnas agregadas: facilitan Looker Studio y recogen lo que piden las fichas de campo
+    'Fecha', 'Precision_GPS_m', 'Humedad_Aparente'],
+  arvenses: ['ID_Arvense', 'ID_Punto', 'Nombre_Arvense', 'Cobertura_Porc', 'Abundancia', 'Foto_Arvense', 'Fecha', 'Potrero'],
+  aforos: ['ID_Aforo', 'ID_Jornada', 'Potrero', 'Area_Ha', 'Metodo_M2', 'Promedio_Peso_g', 'Kg_Ha_FV', 'Oferta_Total_Kg', 'Foto_General',
+    'Fecha', 'Ubicacion', 'Pasto_Predominante', 'Estado_Potrero', 'Dias_Descanso', 'N_Muestras', 'CV_Porc', 'MS_Porc', 'Kg_MS_Ha', 'Observaciones'],
+  detalles: ['ID_Detalle', 'ID_Aforo', 'Peso_g', 'LatLong_Muestra', 'Fecha', 'Potrero', 'Altura_cm', 'Arvenses_Marco'],
   catalogos: ['Categoria', 'Nombre_Item', 'Descripcion_Cientifica', 'Area_Ha']
 };
 

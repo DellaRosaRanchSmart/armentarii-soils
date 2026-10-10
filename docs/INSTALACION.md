@@ -32,20 +32,26 @@ La app lee esta pestaña para las listas desplegables y la guarda en el teléfon
 | Responsable | Juan Pérez | | |
 
 - Si un potrero tiene `Area_Ha`, el aforo la completa sola (se puede editar). Si no, el aforo reporta solo kg/ha.
-- Categorías que reemplazan las listas por defecto de la app (si las crea): `Clima`, `Estado`, `Color`, `Abundancia`,
-  `Compactacion`, `Erosion`, `Encharcamiento`, `Costra_Superficial`, `Actividad_Bio`, `Pisoteo`, `Pedregosidad`.
-  Por defecto las escalas de campo son *Nula / Baja / Media / Alta* y la abundancia *Escasa / Moderada / Abundante / Dominante*.
+- Las listas por defecto son las de las **fichas de campo del voluntariado** (Color: Oscuro/Pardo/Claro/Rojizo/Gris-moteado;
+  Encharcamiento y Costra: No/Sí; Erosión: Ninguna/Leve/Moderada/Severa; Pisoteo: No/Poco/Mucho; Pedregosidad: No/Poca/Mucha;
+  Abundancia: Dominante/Frecuente/Escasa; Estado del potrero: Recién pastoreado/En descanso/Listo para pastoreo).
+  Para cambiar una lista, cree en `5_Catalogos` una categoría con el nombre del campo (`Color`, `Compactacion`, `Erosion`,
+  `Encharcamiento`, `Costra_Superficial`, `Actividad_Bio`, `Pisoteo`, `Pedregosidad`, `Abundancia`, `Clima`, `Estado`,
+  `Humedad_Aparente`, `Estado_Potrero`).
 - Los ejemplos de la tabla son ilustrativos: ponga los potreros y especies reales de la finca.
 
-### Columnas opcionales (recomendadas para Looker Studio)
-La app envía datos extra que **solo se escriben si usted crea la columna** (con ese nombre exacto, en cualquier posición):
+### Columnas adicionales
+`setup` agrega al final de cada pestaña estas columnas (si ya existen no las toca):
 
-| Pestaña | Columna | Para qué |
-|---|---|---|
-| 1_Puntos_Muestreo, 3_Aforos_Cabecera, 2_Arvenses, 4_Aforos_Detalle | `Fecha` | Filtrar por fecha sin tener que combinar con 0_Jornadas |
-| 2_Arvenses, 4_Aforos_Detalle | `Potrero` | Analizar arvenses / marcos por potrero sin combinar |
-| 1_Puntos_Muestreo | `Precision_GPS_m` | Precisión del GPS en metros |
-| 3_Aforos_Cabecera | `N_Muestras`, `CV_Porc` | Número de marcos y variabilidad |
+| Pestaña | Columnas |
+|---|---|
+| 1_Puntos_Muestreo | `Fecha`, `Precision_GPS_m`, `Humedad_Aparente` |
+| 2_Arvenses | `Fecha`, `Potrero` |
+| 3_Aforos_Cabecera | `Fecha`, `Ubicacion` (centro del potrero), `Pasto_Predominante`, `Estado_Potrero`, `Dias_Descanso`, `N_Muestras`, `CV_Porc`, `MS_Porc`, `Kg_MS_Ha`, `Observaciones` |
+| 4_Aforos_Detalle | `Fecha`, `Potrero`, `Altura_cm`, `Arvenses_Marco` |
+
+`Fecha` y `Potrero` evitan tener que combinar pestañas en Looker Studio; las demás recogen lo que piden las fichas de campo.
+Si vuelve a pegar una versión nueva de `Code.gs`, ejecute `setup` otra vez para que aparezcan las columnas nuevas.
 
 **No ponga fórmulas dentro de estas pestañas**: el script reescribe los valores. Si necesita cálculos, hágalos en otra pestaña o en Looker.
 
