@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f5d34">
+  <title>Dashboard Agronómico</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    main { max-width: 1200px; }
+    .tabs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; }
+    .tabs button { flex: 0 0 auto; }
+    .tabs button[aria-selected="true"] { background: var(--brand); color: #fff; }
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+    .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    .tile span { display: block; font-size: 13px; color: var(--ink2); }
+    .tile b { font-size: 26px; font-weight: 600; }
+    .tile small { color: var(--muted); }
+    .charts { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 900px) { .charts { grid-template-columns: 1fr 1fr; } .charts .wide { grid-column: 1 / -1; } }
+    .chart { position: relative; height: 300px; }
+    #map { height: 380px; border-radius: 10px; z-index: 0; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--ink2); margin-top: 8px; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--ink2); font-weight: 600; }
+    .scroll { overflow-x: auto; }
+    .card h3 { display: block; margin-bottom: 8px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="btn ghost small" href="index.html" aria-label="Volver a captura">←</a>
+    <h1>Dashboard · El Rosario</h1>
+  </header>
+  <main>
+    <div class="row between">
+      <span id="fuente" class="muted small"></span>
+      <button class="btn sec small" id="recargar">⟳ Actualizar datos</button>
+    </div>
+    <div class="card filters">
+      <label class="fld"><span>Jornada</span><select id="fJornada"></select></label>
+      <label class="fld"><span>Potrero</span><select id="fPotrero"></select></label>
+      <label class="fld"><span>Desde</span><input type="date" id="fDesde"></label>
+      <label class="fld"><span>Hasta</span><input type="date" id="fHasta"></label>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="btn ghost small" role="tab" data-tab="suelos" aria-selected="true">1 · Fertilidad</button>
+      <button class="btn ghost small" role="tab" data-tab="forrajes">2 · Forrajes</button>
+      <button class="btn ghost small" role="tab" data-tab="botanica">3 · Botánica</button>
+    </div>
+
+    <section id="tab-suelos">
+      <div class="tiles" id="tilesSuelo"></div>
+      <div class="charts">
+        <div class="card wide"><h3>Puntos de muestreo coloreados por pH</h3><div id="map"></div>
+          <div class="legend" id="phLegend"></div></div>
+        <div class="card"><h3>pH promedio por potrero</h3><div class="chart"><canvas id="cPh"></canvas></div></div>
+        <div class="card"><h3>Materia orgánica vs. nitrógeno</h3><div class="chart"><canvas id="cMoN"></canvas></div></div>
+        <div class="card wide"><h3>Promedios químicos por potrero</h3><div class="scroll" id="tNutr"></div></div>
+      </div>
+    </section>
+
+    <section id="tab-forrajes" hidden>
+      <p class="muted small">Para no sumar dos veces el mismo potrero, los indicadores usan el <b>aforo más reciente de cada potrero</b> dentro del filtro.</p>
+      <div class="tiles" id="tilesForraje"></div>
+      <div class="charts">
+        <div class="card"><h3>Forraje verde promedio vs. meta</h3><div class="chart"><canvas id="cGauge"></canvas></div></div>
+        <div class="card"><h3>Kg FV/ha por potrero (último aforo)</h3><div class="chart"><canvas id="cKgHa"></canvas></div></div>
+        <div class="card wide"><h3>Variabilidad entre marcos (último aforo por potrero)</h3><div class="scroll" id="tVar"></div></div>
+        <div class="card wide"><h3>Historial de aforos</h3><div class="scroll" id="tAforos"></div></div>
+      </div>
+    </section>
+
+    <section id="tab-botanica" hidden>
+      <div class="tiles" id="tilesBot"></div>
+      <div class="charts">
+        <div class="card"><h3>Frecuencia de arvenses (% de registros)</h3><div class="chart"><canvas id="cPie"></canvas></div></div>
+        <div class="card"><h3>Cobertura promedio por arvense (%)</h3><div class="chart"><canvas id="cCob"></canvas></div></div>
+        <div class="card wide"><h3>Detalle por arvense</h3><div class="scroll" id="tArv"></div></div>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="vendor/chart.umd.js"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="common.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "Agronomía Digital · Ganadería El Rosario",
+  "short_name": "Agronomía",
+  "description": "Captura offline de muestras de suelo, arvenses y aforos por potrero.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f0",
+  "theme_color": "#2f5d34",
+  "lang": "es",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
