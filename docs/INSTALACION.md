@@ -85,3 +85,13 @@ Desde ahí se puede capturar sin señal. Al volver la conexión la app sincroniz
 - El tamaño del marco queda guardado del último aforo (por defecto 1 m²; con un toque se cambia a 0,5 o 0,25 m²).
 - Fotos públicas: por defecto las fotos de Drive solo las ven quienes tengan acceso a la carpeta. Para mostrarlas
   como imagen en Looker Studio cambie `PHOTOS_PUBLIC = true` en `Code.gs` (cualquiera con el enlace podrá verlas).
+
+## Clima (Open-Meteo)
+La pantalla inicial muestra el clima actual, la lluvia de las últimas 24 h y el pronóstico de 4 días, y al crear la
+jornada de hoy se llenan solos **Clima** y **Lluvia_24h** (se pueden corregir). La ubicación se cambia en
+**Ajustes › Ubicación para el clima** (por defecto 8,69 / −75,89, punto medio aproximado entre los sectores C4 y H2).
+
+- Fuente: [Open-Meteo](https://open-meteo.com/), datos bajo licencia CC BY 4.0 (la app muestra la atribución).
+- Sus términos indican que el uso **gratuito es para fines no comerciales**; para uso comercial ofrecen un plan pagado
+  con clave de API. Si se contrata, hay que agregar la clave en `app/clima.js`.
+- Sin señal se muestra el último dato guardado.

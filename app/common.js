@@ -65,7 +65,8 @@ const DB = {
   setKv(k, v) { return this.put('kv', { k, v }); },
 };
 
-const DEFAULT_SETTINGS = { url: '', token: '', metaKgHa: 15000, phCritico: 5.5 };
+// climaLat/climaLng: punto medio aproximado entre los sectores C4 y H2 (editable en Ajustes).
+const DEFAULT_SETTINGS = { url: '', token: '', metaKgHa: 15000, phCritico: 5.5, climaLat: 8.69, climaLng: -75.89 };
 async function getSettings() { return Object.assign({}, DEFAULT_SETTINGS, await DB.kv('settings', {})); }
 
 // ---------------- API (Google Apps Script) ----------------

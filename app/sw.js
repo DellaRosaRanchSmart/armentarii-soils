@@ -1,6 +1,6 @@
 /* Service worker: deja la app disponible sin internet. Al cambiar archivos, subir VERSION. */
-const VERSION = 'agro-v1.3.1';
-const CORE = ['./', './index.html', './styles.css', './common.js', './potreros.js', './app.js', './dashboard.html', './dashboard.js', './rangos.js',
+const VERSION = 'agro-v1.4.0';
+const CORE = ['./', './index.html', './styles.css', './common.js', './potreros.js', './clima.js', './app.js', './dashboard.html', './dashboard.js', './rangos.js',
   './manifest.webmanifest', './icon.svg', './vendor/chart.umd.js', './vendor/leaflet/leaflet.js',
   './vendor/leaflet/leaflet.css', './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png'];
 

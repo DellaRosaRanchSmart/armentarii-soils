@@ -253,6 +253,8 @@ async function vistaInicio() {
         <path d="M30 60 V40 M30 46 C24 42 22 36 23 32 C28 34 31 39 30 46 M30 50 C36 46 39 40 38 35 C33 37 30 43 30 50" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
     </section>
 
+    <div id="clima"></div>
+
     <div class="acciones">
       <a class="accion primaria" href="#/jornada/nueva"><span class="ico">🗓️</span><b>Nueva jornada</b><small>Fecha, clima y responsable</small></a>
       <a class="accion" href="#/rapido/punto"><span class="ico">🧪</span><b>Punto de suelo</b><small>GPS, campo y laboratorio</small></a>
@@ -289,6 +291,14 @@ async function vistaInicio() {
   $('#btnSync').onclick = sincronizar;
   pintarForraje(recs);
   refrescarHoja(recs);
+  pintarClima();
+}
+
+async function pintarClima() {
+  const el = () => $('#clima');
+  if (!el()) return;
+  el().innerHTML = tarjetaClima(await DB.kv('clima', null));
+  try { const c = await obtenerClima(false); if (el()) el().innerHTML = tarjetaClima(c); } catch (_) { /* sin señal: queda la copia */ }
 }
 
 /** Último aforo de cada potrero: lo capturado en este dispositivo + lo que ya está en la hoja (copia del dashboard). */
@@ -386,6 +396,8 @@ async function vistaJornada(id) {
         ${fSel('Estado', 'Estado', lista('Estado'), j.f.Estado)}
       </div>
       <label class="fld"><span>Notas</span><textarea name="Notas" rows="2">${esc(j.f.Notas)}</textarea></label>
+      <div class="row gap"><button type="button" class="btn ghost small" id="btnClima">☁️ Llenar clima y lluvia con Open-Meteo</button>
+        <span class="small muted" id="climaInfo"></span></div>
       ${datalist('dlResp', lista('Responsable'))}
       <div class="row gap"><button class="btn">Guardar jornada</button>
       ${nueva ? '' : '<button type="button" class="btn danger ghost" id="btnDel">Eliminar</button>'}</div>
@@ -406,6 +418,21 @@ async function vistaJornada(id) {
       <div class="muted small">${c.n} marcos · ${fmt(c.kgHa, 0)} kg FV/ha · ${c.oferta !== '' ? `oferta ${fmt(c.oferta, 0)} kg` : 'sin área'}</div></a>`; }).join('')}`}`;
 
   $('#frm').addEventListener('input', () => (dirty = true));
+  const llenarClima = async (manual) => {
+    const frm = $('#frm'), info = $('#climaInfo');
+    if (frm.Fecha.value !== ymd(new Date())) { if (manual) info.textContent = 'Solo disponible para la jornada de hoy; para otras fechas llénelo a mano.'; return; }
+    info.textContent = 'Consultando…';
+    try {
+      const c = await obtenerClima(manual);
+      if (!c) { info.textContent = 'Sin señal y sin datos guardados.'; return; }
+      if (manual || !frm.Clima.value) frm.Clima.value = wmo(c.code)[2] || frm.Clima.value;
+      if (manual || frm.Lluvia_24h.value === '') frm.Lluvia_24h.value = String(c.lluvia24).replace('.', ',');
+      info.textContent = `${wmo(c.code)[0]}, ${fmt(c.temp, 0)}°C · ${fmt(c.lluvia24, 1)} mm en 24 h (Open-Meteo, ${c.hora.slice(11)})${c.error ? ' · dato guardado' : ''}`;
+      dirty = true;
+    } catch (err) { info.textContent = 'No se pudo consultar el clima: ' + err.message; }
+  };
+  $('#btnClima').onclick = () => llenarClima(true);
+  if (nueva) llenarClima(false);
   $('#frm').onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -741,6 +768,9 @@ async function vistaAjustes() {
         ${fNum('metaKgHa', 'Meta de forraje para el dashboard', s.metaKgHa, 'kg FV/ha')}
         ${fNum('phCritico', 'pH crítico (línea de referencia)', s.phCritico)}
       </div>
+      <h3>Ubicación para el clima</h3>
+      <div class="grid2">${fNum('climaLat', 'Latitud', s.climaLat)}${fNum('climaLng', 'Longitud', s.climaLng)}</div>
+      <button type="button" class="btn ghost small" id="ubicClima">📍 Usar mi ubicación actual</button>
       <div class="row gap"><button class="btn">Guardar</button><button type="button" class="btn sec" id="probar">Probar conexión</button></div>
     </form>
     <div class="card">
@@ -767,12 +797,18 @@ async function vistaAjustes() {
   const guardar = async () => {
     const fd = new FormData($('#frm'));
     await DB.setKv('settings', { url: String(fd.get('url')).trim(), token: String(fd.get('token')).trim(),
-      metaKgHa: num(fd.get('metaKgHa')) || DEFAULT_SETTINGS.metaKgHa, phCritico: num(fd.get('phCritico')) || DEFAULT_SETTINGS.phCritico });
+      metaKgHa: num(fd.get('metaKgHa')) || DEFAULT_SETTINGS.metaKgHa, phCritico: num(fd.get('phCritico')) || DEFAULT_SETTINGS.phCritico,
+      climaLat: num(fd.get('climaLat')) === '' ? DEFAULT_SETTINGS.climaLat : num(fd.get('climaLat')),
+      climaLng: num(fd.get('climaLng')) === '' ? DEFAULT_SETTINGS.climaLng : num(fd.get('climaLng')) });
   };
   $('#frm').onsubmit = async e => { e.preventDefault(); await guardar(); toast('Ajustes guardados'); };
   $('#probar').onclick = async () => {
     await guardar();
     try { const r = await apiGet({ action: 'ping' }); toast(`Conectado a "${r.spreadsheet}"`); } catch (err) { toast(err.message, true); }
+  };
+  $('#ubicClima').onclick = async () => {
+    try { const c = await leerGPS(); $('#frm').climaLat.value = c.lat.toFixed(4); $('#frm').climaLng.value = c.lng.toFixed(4); toast('Ubicación tomada; pulse Guardar'); }
+    catch (err) { toast(err.message, true); }
   };
   $('#cat').onclick = async () => { try { await bajarCatalogos(); toast('Catálogos actualizados'); vistaAjustes(); } catch (err) { toast(err.message, true); } };
   $('#imp').onchange = async e => {
@@ -979,7 +1015,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);
