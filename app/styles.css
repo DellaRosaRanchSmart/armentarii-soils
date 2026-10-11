@@ -122,3 +122,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .vacio { text-align: center; padding: 26px 16px; }
 .vacio .ico { display: block; font-size: 34px; margin-bottom: 6px; }
 .vacio small { display: block; color: var(--muted); margin-top: 4px; }
+.forraje { padding-bottom: 6px; }
+.forr-res { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 6px; }
+.forr-res div { background: var(--bg); border-radius: 10px; padding: 10px; }
+.forr-res b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.forr-res span { font-size: 12px; color: var(--muted); }
+.forr-fila { padding: 10px 0; border-top: 1px solid var(--line); }
+.barra { position: relative; height: 10px; border-radius: 99px; background: var(--brand-2); margin: 6px 0; }
+.barra i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: #2a78d6; }
+.barra i.ok { background: #0ca30c; }
+.barra u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink2); }

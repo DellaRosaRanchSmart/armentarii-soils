@@ -273,6 +273,8 @@ async function vistaInicio() {
       <div><b>${POTREROS.length}</b><span>Potreros</span></div>
     </div>
 
+    <div id="forraje"></div>
+
     <div class="row between"><h2>Jornadas recientes</h2><a class="small linkbtn" href="#/ajustes">⚙️ Ajustes</a></div>
     ${jornadas.length ? jornadas.slice(0, 30).map(j => `
       <a class="card link jcard" href="#/jornada/${encodeURIComponent(j.id)}">
@@ -285,6 +287,68 @@ async function vistaInicio() {
       </a>`).join('') : `<div class="card vacio"><span class="ico">🌱</span><b>Aún no hay jornadas en este dispositivo</b>
         <small>Cree una jornada para empezar a capturar, o importe datos desde ⚙️ Ajustes.</small></div>`}`;
   $('#btnSync').onclick = sincronizar;
+  pintarForraje(recs);
+  refrescarHoja(recs);
+}
+
+/** Último aforo de cada potrero: lo capturado en este dispositivo + lo que ya está en la hoja (copia del dashboard). */
+async function pintarForraje(recs) {
+  const el = $('#forraje');
+  if (!el) return;
+  const s = await getSettings();
+  const fechaJ = Object.fromEntries(recs.filter(r => r.tipo === 'jornada').map(j => [j.id, j.f.Fecha || '']));
+  const lista = recs.filter(r => r.tipo === 'aforo').map(a => {
+    const c = calcAforo(a.muestras.map(m => m.peso), a.metodo, a.area);
+    return { id: a.id, potrero: a.potrero, fecha: fechaJ[a.jornadaId] || '', kgHa: c.kgHa, oferta: c.oferta, n: c.n, local: true };
+  });
+  const hoja = await DB.kv('dashData', null);
+  if (hoja && hoja.data) {
+    const fh = Object.fromEntries((hoja.data.jornadas || []).map(j => [j.ID_Jornada, String(j.Fecha || '')]));
+    const ids = new Set(lista.map(a => a.id));
+    (hoja.data.aforos || []).filter(a => !ids.has(a.ID_Aforo)).forEach(a => lista.push({ id: a.ID_Aforo, potrero: String(a.Potrero || ''),
+      fecha: fh[a.ID_Jornada] || '', kgHa: num(a.Kg_Ha_FV), oferta: num(a.Oferta_Total_Kg), n: '', local: false }));
+  }
+  const ult = {};
+  lista.forEach(a => { const k = a.potrero || 'Sin potrero'; if (!ult[k] || a.fecha > ult[k].fecha) ult[k] = a; });
+  const filas = Object.values(ult).filter(a => a.kgHa !== '').sort((a, b) => b.fecha.localeCompare(a.fecha) || b.kgHa - a.kgHa);
+  if (!filas.length) { el.innerHTML = ''; return; }
+  const meta = s.metaKgHa || 15000;
+  const escala = Math.max(meta * 1.25, ...filas.map(a => a.kgHa));
+  const totalOferta = filas.reduce((t, a) => t + (a.oferta === '' ? 0 : a.oferta), 0);
+  const fechaCorta = f => { const [y, m, d] = f.split('-'); return d ? `${+d} ${MESES[+m - 1]} ${y}` : 'sin fecha'; };
+  el.innerHTML = `
+    <div class="row between"><h2>🌾 Forraje por potrero</h2><a class="small linkbtn" href="dashboard.html">Ver dashboard →</a></div>
+    <div class="card forraje">
+      <div class="forr-res">
+        <div><b>${fmt(totalOferta, 0)} kg</b><span>oferta total (último aforo de ${filas.length} potrero${filas.length > 1 ? 's' : ''})</span></div>
+        <div><b>${fmt(filas.reduce((t, a) => t + a.kgHa, 0) / filas.length, 0)}</b><span>kg FV/ha promedio · meta ${fmt(meta, 0)}</span></div>
+      </div>
+      ${filas.slice(0, 12).map(a => `
+        <div class="forr-fila">
+          <div class="row between"><strong>${esc(a.potrero || 'Sin potrero')}</strong><span class="small muted">${fechaCorta(a.fecha)}</span></div>
+          <div class="barra" role="img" aria-label="${esc(a.potrero)}: ${fmt(a.kgHa, 0)} kg FV/ha, meta ${fmt(meta, 0)}">
+            <i style="width:${Math.min(100, (a.kgHa / escala) * 100)}%" class="${a.kgHa >= meta ? 'ok' : ''}"></i>
+            <u style="left:${(meta / escala) * 100}%"></u></div>
+          <div class="small"><b>${fmt(a.kgHa, 0)}</b> kg FV/ha · ${a.oferta !== '' ? `oferta <b>${fmt(a.oferta, 0)}</b> kg` : '<span class="muted">sin área</span>'}
+            · <span class="muted">${fmt((a.kgHa / meta) * 100, 0)} % de la meta</span></div>
+        </div>`).join('')}
+      ${filas.length > 12 ? `<p class="small muted">… y ${filas.length - 12} potreros más en el dashboard.</p>` : ''}
+      <p class="small muted">La línea vertical marca la meta (${fmt(meta, 0)} kg FV/ha, se cambia en Ajustes).</p>
+    </div>`;
+}
+
+/** Con señal, trae una copia fresca de la hoja para la sección de forraje (sin bloquear la pantalla). */
+let refrescando = false;
+async function refrescarHoja(recs) {
+  const s = await getSettings();
+  if (refrescando || !navigator.onLine || !s.url) return;
+  refrescando = true;
+  try {
+    const r = await apiGet({ action: 'data' });
+    await DB.setKv('dashData', { data: r, at: Date.now() });
+    if (location.hash === '' || location.hash === '#/') pintarForraje(recs);
+  } catch (_) { /* sin conexión o URL mal configurada: se queda con la copia */ }
+  refrescando = false;
 }
 
 /** Acceso rápido: usa la jornada de hoy (o la crea) y abre el formulario. */
@@ -915,7 +979,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);
