@@ -82,3 +82,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
   transition: .2s; pointer-events: none; z-index: 50; }
 .toast.show { opacity: 1; transform: none; }
 .toast.err { background: #8f1f1f; }
+.potinfo { margin-top: 4px; }

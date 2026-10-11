@@ -45,20 +45,66 @@ let dirty = false;
 
 function lista(cat) {
   const desdeHoja = CATALOGO.filter(c => norm(c.Categoria) === norm(cat)).map(c => c.Nombre_Item).filter(Boolean);
+  // Potreros y pastos: listado de la finca (potreros.js) + lo que se agregue en 5_Catalogos.
+  if (norm(cat) === 'potrero') return [...new Set([...POTREROS.map(p => p[0]), ...desdeHoja])];
+  if (norm(cat) === 'pasto') return [...new Set([...POTREROS.map(p => p[4]).filter(x => x !== 'Sin especificar'), ...desdeHoja])].sort();
   return desdeHoja.length ? desdeHoja : (LISTAS[cat] || []);
 }
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\s_]+/g, '');
+const potreroFinca = nombre => POTREROS.find(p => norm(p[0]) === norm(nombre) || norm(p[1]) === norm(nombre));
+/** Área para calcular la oferta: la de 5_Catalogos si existe; si no, el área de PASTOREO del listado de la finca. */
 function areaPotrero(nombre) {
   const it = CATALOGO.find(c => norm(c.Categoria) === 'potrero' && norm(c.Nombre_Item) === norm(nombre));
-  if (!it) return '';
-  const a = num(it.Area_Ha);
-  return a !== '' ? a : num(it.Descripcion_Cientifica); // por si el área se guardó en la descripción
+  const a = it ? num(it.Area_Ha) : '';
+  if (a !== '') return a;
+  const p = potreroFinca(nombre);
+  return p ? p[3] : '';
+}
+function pastoPotrero(nombre) {
+  const p = potreroFinca(nombre);
+  return p && p[4] !== 'Sin especificar' ? p[4] : '';
+}
+/** Texto de ayuda bajo el campo potrero. */
+function infoPotrero(nombre) {
+  if (!String(nombre || '').trim()) return '';
+  const p = potreroFinca(nombre);
+  if (p) return `✓ ${esc(p[0])} · ${esc(p[4])} · ${fmt(p[3], 2)} ha de pastoreo (${fmt(p[2], 2)} ha totales)`;
+  if (lista('Potrero').some(x => norm(x) === norm(nombre))) return '✓ Potrero del catálogo de la hoja';
+  return '⚠️ No está en el listado de potreros de la finca';
+}
+/** Al escribir el potrero: corrige mayúsculas, muestra su info y rellena área/pasto si no los escribió el usuario. */
+function enlazarPotrero(frm, campoPot, campoArea, campoPasto) {
+  const info = document.createElement('div');
+  info.className = 'small muted potinfo';
+  frm[campoPot].closest('.fld').appendChild(info);
+  const pintar = () => (info.innerHTML = infoPotrero(frm[campoPot].value));
+  const rellenar = () => {
+    const p = potreroFinca(frm[campoPot].value);
+    if (p && frm[campoPot].value !== p[0]) frm[campoPot].value = p[0];
+    for (const [campo, valor] of [[campoArea, areaPotrero(frm[campoPot].value)], [campoPasto, pastoPotrero(frm[campoPot].value)]]) {
+      if (!campo || !frm[campo]) continue;
+      const el = frm[campo];
+      if (el.value === '' || el.dataset.auto === '1') { el.value = valor === '' ? '' : String(valor); el.dataset.auto = valor === '' ? '' : '1'; }
+    }
+    pintar();
+  };
+  frm[campoPot].addEventListener('input', () => { if (potreroFinca(frm[campoPot].value)) rellenar(); else pintar(); });
+  frm[campoPot].addEventListener('change', rellenar);
+  for (const campo of [campoArea, campoPasto]) if (campo && frm[campo]) frm[campo].addEventListener('input', e => { if (e.isTrusted) frm[campo].dataset.auto = ''; });
+  pintar();
+}
+async function confirmarPotrero(nombre) {
+  if (!nombre || lista('Potrero').some(x => norm(x) === norm(nombre))) return true;
+  return confirm(`"${nombre}" no está en el listado de potreros de la finca. ¿Guardar igual?`);
 }
 
 // ---------------- Componentes HTML ----------------
 const opt = (vals, sel) => '<option value=""></option>' + vals.map(v => `<option${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('')
   + (sel && !vals.includes(sel) ? `<option selected>${esc(sel)}</option>` : '');
-const datalist = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+const datalist = (id, vals) => `<datalist id="${id}">${vals.map(v => {
+  const p = id === 'dlPot' ? potreroFinca(v) : null;
+  return `<option value="${esc(v)}"${p ? ` label="${esc(`${p[4]} · ${fmt(p[3], 2)} ha`)}"` : ''}>`;
+}).join('')}</datalist>`;
 const fNum = (name, label, val, unit = '', extra = '') =>
   `<label class="fld"><span>${esc(label)}${unit ? ` <small>(${esc(unit)})</small>` : ''}</span>
    <input name="${name}" type="text" inputmode="decimal" value="${esc(val)}" ${extra}></label>`;
@@ -357,6 +403,7 @@ async function vistaPunto(id, jornadaId) {
   activarFotos(frm, p.jornadaId, () => `${p.id}_${(frm.Potrero.value || 'SP').replace(/[^\w-]+/g, '')}`);
   pintarPrevias(frm);
   frm.addEventListener('input', () => (dirty = true));
+  enlazarPotrero(frm, 'Potrero', null, 'Pasto_Predominante');
 
   $('#btnGps').onclick = async () => {
     const b = $('#btnGps'); b.disabled = true; b.textContent = 'Buscando señal…';
@@ -397,6 +444,7 @@ async function vistaPunto(id, jornadaId) {
         abundancia: $('[name=abundancia]', el).value, foto: $(`[name="arv_${CSS.escape(aid)}"]`, el).value };
     }).filter(a => a.nombre);
     if (!p.f.Potrero && !confirm('No indicó potrero. ¿Guardar igual?')) return;
+    if (!(await confirmarPotrero(p.f.Potrero))) return;
     if (p.lat === '' && !confirm('El punto no tiene ubicación GPS. ¿Guardar igual?')) return;
     p.sync = 'pending'; p.updatedAt = Date.now();
     await DB.put('records', p);
@@ -424,7 +472,7 @@ async function vistaAforo(id, jornadaId) {
       <div class="muted small">${esc(a.id)}</div>
       <div class="grid2">
         ${fTxt('potrero', 'Potrero', a.potrero, 'dlPot')}
-        ${fNum('area', 'Área del potrero', a.area, 'ha', 'placeholder="Opcional"')}
+        ${fNum('area', 'Área de pastoreo', a.area, 'ha', 'placeholder="Opcional"')}
       </div>
       <div class="fld"><span>Tamaño del marco <small>(m²)</small></span>
         <div class="row gap">
@@ -494,10 +542,6 @@ async function vistaAforo(id, jornadaId) {
 
   frm.addEventListener('input', e => {
     dirty = true;
-    if (e.target.name === 'potrero') {
-      const ar = areaPotrero(e.target.value);
-      if (ar !== '' && !frm.area.value) frm.area.value = String(ar);
-    }
     recalcular();
   });
   frm.addEventListener('click', async e => {
@@ -525,6 +569,8 @@ async function vistaAforo(id, jornadaId) {
     $('#muestras').insertAdjacentHTML('beforeend', mRow({ id: uid('D'), peso: '' }, $$('.muestra', frm).length));
     $$('[name=peso]', frm).pop().focus();
   };
+  enlazarPotrero(frm, 'potrero', 'area', 'pasto');
+  frm.potrero.addEventListener('change', recalcular);
   activarFotos(frm, a.jornadaId, () => `${a.id}_${(frm.potrero.value || 'SP').replace(/[^\w-]+/g, '')}`);
   pintarPrevias(frm);
 
@@ -542,6 +588,7 @@ async function vistaAforo(id, jornadaId) {
       ms: num(frm.ms.value), obs: frm.obs.value.trim() };
     if (a.x.ms !== '' && (a.x.ms <= 0 || a.x.ms > 100)) return toast('% de materia seca debe estar entre 0 y 100', true);
     if (!a.potrero) return toast('Indique el potrero', true);
+    if (!(await confirmarPotrero(a.potrero))) return;
     if (!(a.metodo > 0)) return toast('Indique el tamaño del marco en m²', true);
     a.muestras = $$('.muestra', frm).map(el => {
       const c = $('.coord', el);
@@ -813,7 +860,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);
