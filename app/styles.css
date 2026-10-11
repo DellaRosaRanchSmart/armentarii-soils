@@ -145,3 +145,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .clima-dias b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .clima-dias small { font-size: 11px; color: var(--muted); }
 .clima-pie { margin-top: 8px; }
+.pastoreo { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.pastoreo .kpis { margin-top: 8px; }
+.aviso-param { background: var(--warn-bg); border-radius: 8px; padding: 8px 10px; }

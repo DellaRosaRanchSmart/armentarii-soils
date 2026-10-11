@@ -66,7 +66,9 @@ const DB = {
 };
 
 // climaLat/climaLng: punto medio aproximado entre los sectores C4 y H2 (editable en Ajustes).
-const DEFAULT_SETTINGS = { url: '', token: '', metaKgHa: 15000, phCritico: 5.5, climaLat: 8.69, climaLng: -75.89 };
+const DEFAULT_SETTINGS = { url: '', token: '', metaKgHa: 15000, phCritico: 5.5, climaLat: 8.69, climaLng: -75.89,
+  // Pastoreo: 30 % de desperdicio y 3 días de referencia los definió la finca. Peso, consumo y lote los define el equipo técnico.
+  despPorc: 30, periodoDias: 3, pesoKg: '', consumoPorc: '', baseConsumo: 'FV', msDefecto: '', loteAnimales: '' };
 async function getSettings() { return Object.assign({}, DEFAULT_SETTINGS, await DB.kv('settings', {})); }
 
 // ---------------- API (Google Apps Script) ----------------
@@ -117,6 +119,48 @@ function calcAforo(pesos, metodoM2, areaHa) {
     cv = (sd / prom) * 100;
   }
   return { n, prom, kgHa, oferta, cv };
+}
+
+// ---------------- Pastoreo: capacidad de carga y días ----------------
+const PARAM_HOJA = { desperdicio_porc: 'despPorc', periodo_dias: 'periodoDias', peso_kg: 'pesoKg', consumo_porc_pv: 'consumoPorc',
+  base_consumo: 'baseConsumo', ms_porc_defecto: 'msDefecto', animales_lote: 'loteAnimales' };
+/** Parámetros de pastoreo: los de Ajustes de este dispositivo, reemplazados por los de 5_Catalogos
+    (Categoria = Parametro_Pastoreo) para que todos los dispositivos calculen igual. */
+async function paramsPastoreo() {
+  const s = await getSettings();
+  const P = { despPorc: s.despPorc, periodoDias: s.periodoDias, pesoKg: s.pesoKg, consumoPorc: s.consumoPorc,
+    baseConsumo: s.baseConsumo, msDefecto: s.msDefecto, loteAnimales: s.loteAnimales, fuente: 'Ajustes' };
+  const cat = await DB.kv('catalogos', null);
+  (cat ? cat.items : []).filter(c => String(c.Categoria || '').toLowerCase().replace(/[\s_]/g, '') === 'parametropastoreo').forEach(c => {
+    const k = PARAM_HOJA[String(c.Nombre_Item || '').trim().toLowerCase()];
+    if (!k) return;
+    const v = String(c.Descripcion_Cientifica ?? '').trim();
+    P[k] = k === 'baseConsumo' ? (/^ms|seca/i.test(v) ? 'MS' : 'FV') : num(v);
+    P.fuente = '5_Catalogos';
+  });
+  ['despPorc', 'periodoDias', 'pesoKg', 'consumoPorc', 'msDefecto', 'loteAnimales'].forEach(k => (P[k] = num(P[k])));
+  return P;
+}
+
+/** cantidadFV: kg de forraje verde (oferta del potrero, o kg/ha para el cálculo por hectárea).
+    Base FV: consumo en % PV de forraje verde. Base MS: se pasa el forraje a materia seca con el % MS del aforo
+    (o el % MS por defecto) y el consumo es en % PV de materia seca.
+    aprovechable = cantidad × (1 − desperdicio); demanda = peso × consumo%;
+    capacidad = aprovechable ÷ (demanda × días de referencia); días = aprovechable ÷ (animales × demanda). */
+function calcPastoreo(cantidadFV, msPorc, P, animales) {
+  const falta = [];
+  if (!(P.pesoKg > 0)) falta.push('peso vivo promedio');
+  if (!(P.consumoPorc > 0)) falta.push('consumo (% del peso vivo)');
+  const ms = num(msPorc) !== '' ? num(msPorc) : P.msDefecto;
+  if (P.baseConsumo === 'MS' && !(ms > 0)) falta.push('% de materia seca');
+  if (cantidadFV === '' || cantidadFV == null || falta.length) return { listo: false, falta };
+  const base = P.baseConsumo === 'MS' ? cantidadFV * ms / 100 : cantidadFV;
+  const aprovechable = base * (1 - (P.despPorc || 0) / 100);
+  const demanda = P.pesoKg * P.consumoPorc / 100;
+  const periodo = P.periodoDias > 0 ? P.periodoDias : 3;
+  const n = num(animales) !== '' ? num(animales) : P.loteAnimales;
+  return { listo: true, unidad: P.baseConsumo === 'MS' ? 'kg MS' : 'kg FV', aprovechable, demanda, periodo,
+    capacidad: aprovechable / (demanda * periodo), animales: n, dias: n > 0 ? aprovechable / (n * demanda) : '' };
 }
 
 const round = (v, d = 2) => (v === '' ? '' : Math.round(v * 10 ** d) / 10 ** d);

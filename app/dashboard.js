@@ -93,7 +93,7 @@ async function cargar(forzar) {
     DATA = r;
     await DB.setKv('dashData', { data: r, at: Date.now() });
     $('#fuente').textContent = `Datos de Google Sheets · ${new Date().toLocaleString('es-CO')}`;
-    try { const cat = await apiGet({ action: 'catalogos' }); await DB.setKv('catalogos', { items: cat.items || [], at: Date.now() }); aplicarRangos(cat.items); } catch (_) { /* rangos por defecto */ }
+    try { const cat = await apiGet({ action: 'catalogos' }); await DB.setKv('catalogos', { items: cat.items || [], at: Date.now() }); aplicarRangos(cat.items); PP = await paramsPastoreo(); } catch (_) { /* rangos por defecto */ }
     llenarFiltros(); render(); pintarEstado();
   } catch (err) {
     if (!DATA) $('#fuente').textContent = 'Sin datos';
@@ -326,36 +326,36 @@ function ultimoPorPotrero(aforos) {
   return Object.values(m);
 }
 
+let PP = null; // parámetros de pastoreo
 function renderForrajes(d) {
   const c = C(), ult = ultimoPorPotrero(d.aforos);
   const prom = avg(ult.map(a => a.Kg_Ha_FV));
   const conArea = ult.filter(a => num(a.Oferta_Total_Kg) !== '');
+  ult.forEach(a => (a._r = PP ? calcPastoreo(num(a.Oferta_Total_Kg), a.MS_Porc, PP, a.Animales_Lote) : { listo: false, falta: [] }));
+  const listos = ult.filter(a => a._r.listo);
+  const periodo = PP && PP.periodoDias > 0 ? PP.periodoDias : 3;
   tiles('#tilesForraje', [
     ['Potreros aforados', ult.length, `${d.aforos.length} aforos en el periodo`],
     ['Forraje verde promedio', fmt(prom, 0), 'kg FV/ha'],
     ['Oferta total disponible', fmt(sum(conArea.map(a => a.Oferta_Total_Kg)), 0), `kg FV · ${conArea.length} potreros con área`],
-    ['Potreros sin área', ult.length - conArea.length, 'solo se reporta kg/ha'],
-    ['Meta', fmt(S.metaKgHa, 0), 'kg FV/ha'],
+    ['Capacidad de referencia', listos.length ? fmt(listos.reduce((t, a) => t + Math.floor(a._r.capacidad), 0), 0) : '—',
+      listos.length ? `animales × ${fmt(periodo, 0)} días · ${fmt(PP.despPorc, 0)} % desperdicio` : 'faltan parámetros de pastoreo'],
+    ['Potreros sin área', ult.length - conArea.length, 'no se calcula capacidad'],
   ]);
 
-  // Medidor (semicírculo) vs meta
-  const max = Math.max(S.metaKgHa * 1.5, prom || 0);
-  const val = prom === '' ? 0 : prom;
-  draw('cGauge', {
-    type: 'doughnut',
-    data: { labels: ['Promedio', 'Resto'], datasets: [{ data: [val, Math.max(max - val, 0)], backgroundColor: [val >= S.metaKgHa ? '#0ca30c' : c.s1, c.grid], borderWidth: 0 }] },
-    options: { maintainAspectRatio: false, rotation: -90, circumference: 180, cutout: '72%',
-      plugins: { legend: { display: false }, tooltip: { enabled: false } } },
-    plugins: [{
-      id: 'centro', afterDraw(ch) {
-        const { ctx, chartArea: a } = ch; const x = (a.left + a.right) / 2, y = a.bottom - 10;
-        ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = dark() ? '#f0efec' : '#0b0b0b'; ctx.font = '600 26px system-ui';
-        ctx.fillText(prom === '' ? '—' : `${fmt(prom, 0)} kg/ha`, x, y - 22);
-        ctx.font = '13px system-ui'; ctx.fillStyle = c.ink;
-        ctx.fillText(prom === '' ? 'sin aforos' : `${fmt((prom / S.metaKgHa) * 100, 0)} % de la meta (${fmt(S.metaKgHa, 0)})`, x, y);
-        ctx.restore();
-      },
-    }],
+  // Capacidad de carga (animales que pueden entrar durante el período de referencia)
+  const cap = listos.slice().sort((a, b) => b._r.capacidad - a._r.capacidad);
+  $('#tCap').textContent = `Capacidad de carga: animales por ${fmt(periodo, 0)} días (último aforo)`;
+  const faltan = ult.find(a => !a._r.listo && a._r.falta && a._r.falta.length);
+  $('#notaCap').innerHTML = !cap.length ? (faltan ? `Para calcularla falta definir: ${esc(faltan._r.falta.join(', '))} (Ajustes de la app o 5_Catalogos).` : 'Sin potreros con área.')
+    : `Demanda: ${fmt(PP.pesoKg, 0)} kg × ${fmt(PP.consumoPorc, 1)} % PV = ${fmt(PP.pesoKg * PP.consumoPorc / 100, 1)} kg ${PP.baseConsumo}/animal/día · desperdicio ${fmt(PP.despPorc, 0)} % · parámetros de ${esc(PP.fuente)}.`;
+  draw('cCap', {
+    type: 'bar',
+    data: { labels: cap.map(a => a.Potrero), datasets: [{ label: 'Animales', data: cap.map(a => Math.floor(a._r.capacidad)), backgroundColor: c.s1, borderRadius: 4, maxBarThickness: 28 }] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: x => { const r = cap[x.dataIndex]._r; return [`${x.raw} animales × ${fmt(periodo, 0)} días`,
+        `Aprovechable: ${fmt(r.aprovechable, 0)} ${r.unidad}`, r.dias !== '' ? `Días con ${fmt(r.animales, 0)} animales: ${fmt(r.dias, 1)}` : ''].filter(Boolean); } } } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: c.grid } }, y: { grid: { display: false } } } },
   });
 
   const orden = ult.filter(a => num(a.Kg_Ha_FV) !== '').sort((a, b) => num(b.Kg_Ha_FV) - num(a.Kg_Ha_FV));
@@ -363,9 +363,8 @@ function renderForrajes(d) {
     type: 'bar',
     data: { labels: orden.map(a => a.Potrero), datasets: [{ label: 'kg FV/ha', data: orden.map(a => num(a.Kg_Ha_FV)), backgroundColor: c.s1, borderRadius: 4, maxBarThickness: 28 }] },
     options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false },
-      tooltip: { callbacks: { label: x => `${fmt(x.raw, 0)} kg FV/ha · ${orden[x.dataIndex]._fecha}` } },
-      refLine: { axis: 'x', value: S.metaKgHa, color: '#0ca30c', label: 'Meta' } },
-      scales: { x: { beginAtZero: true, suggestedMax: S.metaKgHa * 1.1, grid: { color: c.grid } }, y: { grid: { display: false } } } },
+      tooltip: { callbacks: { label: x => `${fmt(x.raw, 0)} kg FV/ha · ${orden[x.dataIndex]._fecha}` } } },
+      scales: { x: { beginAtZero: true, grid: { color: c.grid } }, y: { grid: { display: false } } } },
   });
 
   const det = groupBy(d.detalles, 'ID_Aforo');
@@ -383,6 +382,8 @@ function renderForrajes(d) {
     ['Fecha', a => esc(a._fecha)], ['Potrero', a => esc(a.Potrero)], ['Área ha', a => fmt(num(a.Area_Ha), 2)],
     ['Marco m²', a => fmt(num(a.Metodo_M2), 2)], ['Prom g', a => fmt(num(a.Promedio_Peso_g), 0)],
     ['kg FV/ha', a => fmt(num(a.Kg_Ha_FV), 0)], ['Oferta kg', a => fmt(num(a.Oferta_Total_Kg), 0)],
+    [`Capacidad (${fmt(PP && PP.periodoDias > 0 ? PP.periodoDias : 3, 0)} d)`, a => { const r = PP ? calcPastoreo(num(a.Oferta_Total_Kg), a.MS_Porc, PP, a.Animales_Lote) : {}; return r.listo ? fmt(Math.floor(r.capacidad), 0) : '—'; }],
+    ['Días pastoreo', a => { const r = PP ? calcPastoreo(num(a.Oferta_Total_Kg), a.MS_Porc, PP, a.Animales_Lote) : {}; return r.listo && r.dias !== '' ? fmt(r.dias, 1) : '—'; }],
     ['Foto', a => a.Foto_General ? `<a href="${esc(a.Foto_General)}" target="_blank" rel="noopener">ver</a>` : ''],
   ], hist);
 }
@@ -427,6 +428,7 @@ function renderBotanica(d) {
   S = await getSettings();
   const catLocal = await DB.kv('catalogos', null);
   aplicarRangos(catLocal ? catLocal.items : []);
+  PP = await paramsPastoreo();
   $$('[role=tab]').forEach(b => b.onclick = () => {
     tabActual = b.dataset.tab;
     $$('[role=tab]').forEach(x => x.setAttribute('aria-selected', String(x === b)));

@@ -95,3 +95,31 @@ jornada de hoy se llenan solos **Clima** y **Lluvia_24h** (se pueden corregir). 
 - Sus términos indican que el uso **gratuito es para fines no comerciales**; para uso comercial ofrecen un plan pagado
   con clave de API. Si se contrata, hay que agregar la clave en `app/clima.js`.
 - Sin señal se muestra el último dato guardado.
+
+## Capacidad de carga y días de pastoreo
+Reemplaza la "meta" de kg/ha. Cálculo con el último aforo de cada potrero:
+
+- **Forraje aprovechable** = oferta total × (1 − desperdicio). Desperdicio por defecto: **30 %**.
+- **Demanda por animal/día** = peso vivo × consumo (% del peso vivo).
+  Si el consumo está en **materia seca (MS)**, la oferta se pasa a MS con el % MS del aforo (o el % MS por defecto).
+- **Capacidad de referencia** = aprovechable ÷ (demanda × **3 días**) → animales que pueden entrar al potrero por 3 días (se redondea hacia abajo).
+- **Días de pastoreo** = aprovechable ÷ (animales del lote × demanda).
+
+Los potreros sin área no tienen oferta total, así que no se calcula su capacidad.
+
+**Peso vivo, consumo y base (FV o MS) no tienen valor por defecto**: los define el equipo técnico.
+Para que todos los dispositivos calculen igual, póngalos en `5_Catalogos` con *Categoria* = `Parametro_Pastoreo`:
+
+| Nombre_Item | Descripcion_Cientifica (valor) |
+|---|---|
+| `Peso_Kg` | peso vivo promedio, p. ej. `400` |
+| `Consumo_Porc_PV` | consumo diario en % del peso vivo |
+| `Base_Consumo` | `FV` (forraje verde) o `MS` (materia seca) |
+| `MS_Porc_Defecto` | % MS a usar si el aforo no lo midió (solo con base MS) |
+| `Desperdicio_Porc` | `30` |
+| `Periodo_Dias` | `3` |
+| `Animales_Lote` | animales del lote para calcular días de pastoreo (opcional) |
+
+En el aforo se puede escribir "Animales a pastorear" para ese potrero en particular. Al sincronizar se guardan en la hoja
+`Animales_Lote`, `Forraje_Aprovechable_Kg`, `Capacidad_Animales_Ref` y `Dias_Pastoreo`, calculados con los parámetros
+vigentes en ese momento (ejecute `setup` para crear esas columnas).
