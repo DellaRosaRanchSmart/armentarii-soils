@@ -309,24 +309,26 @@ async function pintarForraje(recs) {
   const fechaJ = Object.fromEntries(recs.filter(r => r.tipo === 'jornada').map(j => [j.id, j.f.Fecha || '']));
   const lista = recs.filter(r => r.tipo === 'aforo').map(a => {
     const c = calcAforo(a.muestras.map(m => m.peso), a.metodo, a.area);
-    return { id: a.id, potrero: a.potrero, fecha: fechaJ[a.jornadaId] || '', kgHa: c.kgHa, oferta: c.oferta, ms: (a.x || {}).ms, animales: (a.x || {}).animales };
+    return { id: a.id, potrero: a.potrero, fecha: fechaJ[a.jornadaId] || '', kgHa: c.kgHa, oferta: c.oferta, ms: (a.x || {}).ms, lote: { animales: (a.x || {}).animales, pesoTotal: (a.x || {}).pesoTotal } };
   });
   const hoja = await DB.kv('dashData', null);
   if (hoja && hoja.data) {
     const fh = Object.fromEntries((hoja.data.jornadas || []).map(j => [j.ID_Jornada, String(j.Fecha || '')]));
     const ids = new Set(lista.map(a => a.id));
     (hoja.data.aforos || []).filter(a => !ids.has(a.ID_Aforo)).forEach(a => lista.push({ id: a.ID_Aforo, potrero: String(a.Potrero || ''),
-      fecha: fh[a.ID_Jornada] || '', kgHa: num(a.Kg_Ha_FV), oferta: num(a.Oferta_Total_Kg), ms: num(a.MS_Porc), animales: num(a.Animales_Lote) }));
+      fecha: fh[a.ID_Jornada] || '', kgHa: num(a.Kg_Ha_FV), oferta: num(a.Oferta_Total_Kg), ms: num(a.MS_Porc),
+      lote: { animales: num(a.Animales_Lote), pesoTotal: num(a.Peso_Total_Lote_Kg) } }));
   }
   const ult = {};
   lista.forEach(a => { const k = a.potrero || 'Sin potrero'; if (!ult[k] || a.fecha > ult[k].fecha) ult[k] = a; });
   const filas = Object.values(ult).filter(a => a.kgHa !== '').sort((a, b) => b.fecha.localeCompare(a.fecha) || b.kgHa - a.kgHa)
-    .map(a => Object.assign(a, { r: calcPastoreo(a.oferta, a.ms, P, a.animales) }));
+    .map(a => Object.assign(a, { r: calcPastoreo(a.oferta, a.ms, P, a.lote) }));
   if (!filas.length) { el.innerHTML = ''; return; }
   const totalOferta = filas.reduce((t, a) => t + (a.oferta === '' ? 0 : a.oferta), 0);
   const listos = filas.filter(a => a.r.listo);
-  const capTotal = listos.reduce((t, a) => t + Math.floor(a.r.capacidad), 0);
-  const maxCap = Math.max(1, ...listos.map(a => a.r.capacidad));
+  const enAnimales = P.pesoKg > 0;
+  const capTotal = listos.reduce((t, a) => t + (enAnimales ? Math.floor(a.r.capAnimales) : a.r.capKgPV), 0);
+  const maxCap = Math.max(1, ...listos.map(a => a.r.capKgPV));
   const falta = filas.find(a => !a.r.listo && a.r.falta && a.r.falta.length);
   const fechaCorta = f => { const [y, m, d] = f.split('-'); return d ? `${+d} ${MESES[+m - 1]} ${y}` : 'sin fecha'; };
   el.innerHTML = `
@@ -334,20 +336,20 @@ async function pintarForraje(recs) {
     <div class="card forraje">
       <div class="forr-res">
         <div><b>${fmt(totalOferta, 0)} kg FV</b><span>oferta total (último aforo de ${filas.length} potrero${filas.length > 1 ? 's' : ''})</span></div>
-        <div><b>${listos.length ? `${fmt(capTotal, 0)} animales` : '—'}</b><span>capacidad para ${fmt(P.periodoDias || 3, 0)} días (con ${fmt(P.despPorc, 0)} % de desperdicio)</span></div>
+        <div><b>${listos.length ? `${fmt(capTotal, 0)} ${enAnimales ? 'animales' : 'kg PV'}` : '—'}</b><span>capacidad para ${fmt(P.periodoDias || 3, 0)} días (con ${fmt(P.despPorc, 0)} % de desperdicio)</span></div>
       </div>
       ${falta ? `<p class="small aviso-param">🐄 Para calcular capacidad de carga y días de pastoreo, defina en <a href="#/ajustes">Ajustes</a>: ${esc(falta.r.falta.join(', '))}.</p>` : ''}
       ${filas.slice(0, 12).map(a => `
         <div class="forr-fila">
           <div class="row between"><strong>${esc(a.potrero || 'Sin potrero')}</strong><span class="small muted">${fechaCorta(a.fecha)}</span></div>
-          ${a.r.listo ? `<div class="barra" role="img" aria-label="${esc(a.potrero)}: capacidad ${Math.floor(a.r.capacidad)} animales por ${a.r.periodo} días">
-            <i style="width:${Math.max(2, (a.r.capacidad / maxCap) * 100)}%"></i></div>` : ''}
-          <div class="small">${a.r.listo ? `🐄 <b>${fmt(Math.floor(a.r.capacidad), 0)}</b> animales × ${fmt(a.r.periodo, 0)} días
-            ${a.r.dias !== '' ? ` · ⏱️ <b>${fmt(a.r.dias, 1)}</b> días con ${fmt(a.r.animales, 0)} animales` : ''} · ` : ''}
+          ${a.r.listo ? `<div class="barra" role="img" aria-label="${esc(a.potrero)}: capacidad ${textoCapacidad(a.r)} por ${a.r.periodo} días">
+            <i style="width:${Math.max(2, (a.r.capKgPV / maxCap) * 100)}%"></i></div>` : ''}
+          <div class="small">${a.r.listo ? `🐄 <b>${textoCapacidad(a.r)}</b> × ${fmt(a.r.periodo, 0)} días
+            ${a.r.dias !== '' ? ` · ⏱️ <b>${fmt(a.r.dias, 1)}</b> días con ${textoLote(a.r)}` : ''} · ` : ''}
             ${fmt(a.kgHa, 0)} kg FV/ha · ${a.oferta !== '' ? `oferta ${fmt(a.oferta, 0)} kg` : '<span class="muted">sin área: no se calcula capacidad</span>'}</div>
         </div>`).join('')}
       ${filas.length > 12 ? `<p class="small muted">… y ${filas.length - 12} potreros más en el dashboard.</p>` : ''}
-      ${listos.length ? `<p class="small muted">Demanda: ${fmt(P.pesoKg, 0)} kg × ${fmt(P.consumoPorc, 1)} % = ${fmt(P.pesoKg * P.consumoPorc / 100, 1)} kg ${P.baseConsumo} por animal al día.</p>` : ''}
+      ${listos.length ? `<p class="small muted">Consumo ${fmt(P.consumoPorc, 1)} % del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''}${listos.some(a => a.r.dias !== '') ? '' : ' · para los días de pastoreo, cargue el peso total del circuito en Ajustes'}.</p>` : ''}
     </div>`;
 }
 
@@ -606,21 +608,22 @@ async function vistaPunto(id, jornadaId) {
 }
 
 /** Recuadro de capacidad de carga y días de pastoreo dentro del aforo. */
-function bloquePastoreo(c, ms, P, animales) {
+function bloquePastoreo(c, ms, P, lote) {
   if (c.kgHa === '') return '';
-  const r = calcPastoreo(c.oferta !== '' ? c.oferta : c.kgHa, ms, P, animales);
+  const porHa = c.oferta === '';
+  const r = calcPastoreo(porHa ? c.kgHa : c.oferta, ms, P, porHa ? {} : lote);
   if (!r.listo) return `<div class="pastoreo"><b>🐄 Capacidad de carga</b><p class="small muted">Para calcularla falta definir en
     <a href="#/ajustes">Ajustes</a> (o en 5_Catalogos): ${esc(r.falta.join(', '))}.</p></div>`;
-  const porHa = c.oferta === '';
   return `<div class="pastoreo"><b>🐄 Pastoreo${porHa ? ' (por hectárea, sin área del potrero)' : ''}</b>
     <div class="kpis">
-      <div><span>Forraje aprovechable (−${fmt(P.despPorc, 0)} % desperdicio)</span><b>${fmt(r.aprovechable, 0)} ${r.unidad}</b></div>
-      <div><span>Capacidad para ${fmt(r.periodo, 0)} días</span><b>${fmt(Math.floor(r.capacidad), 0)} animales${porHa ? '/ha' : ''}</b></div>
-      <div><span>Días de pastoreo${r.animales ? ` con ${fmt(r.animales, 0)} animales` : ''}</span><b>${r.dias !== '' ? fmt(r.dias, 1) + ' días' : '—'}</b></div>
-      <div><span>Demanda por animal</span><b>${fmt(r.demanda, 1)} ${r.unidad}/día</b></div>
+      <div><span>Forraje aprovechable (−${fmt(P.despPorc, 0)} % desperdicio)</span><b>${fmt(r.aprovechable, 0)} ${r.unidad}${porHa ? '/ha' : ''}</b></div>
+      <div><span>Capacidad para ${fmt(r.periodo, 0)} días</span><b>${textoCapacidad(r, porHa)}</b></div>
+      <div><span>Días de pastoreo${!porHa && r.pesoTotal ? ` con ${textoLote(r)}` : ''}</span><b>${!porHa && r.dias !== '' ? fmt(r.dias, 1) + ' días' : '—'}</b></div>
+      <div><span>${r.demandaAnimal !== '' ? 'Demanda por animal' : 'Consumo'}</span><b>${r.demandaAnimal !== '' ? `${fmt(r.demandaAnimal, 1)} ${r.unidad}/día` : `${fmt(P.consumoPorc, 1)} % PV/día`}</b></div>
     </div>
-    ${r.dias === '' ? '<p class="small muted">Escriba "Animales a pastorear" (o el lote en Ajustes) para ver los días.</p>' : ''}
-    <p class="small muted">Peso ${fmt(P.pesoKg, 0)} kg · consumo ${fmt(P.consumoPorc, 1)} % PV en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'} · parámetros de ${esc(P.fuente)}.</p></div>`;
+    ${!porHa && r.dias === '' ? '<p class="small muted">Para los días de pastoreo escriba el peso total del lote o el número de animales (con peso promedio en Ajustes).</p>' : ''}
+    ${r.capAnimales === '' ? '<p class="small muted">Con el peso promedio por animal (Ajustes) la capacidad se muestra también en número de animales.</p>' : ''}
+    <p class="small muted">Consumo ${fmt(P.consumoPorc, 1)} % del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''} · parámetros de ${esc(P.fuente)}.</p></div>`;
 }
 
 // ----- Aforo por potrero -----
@@ -631,7 +634,7 @@ async function vistaAforo(id, jornadaId) {
     : await DB.get('records', id);
   if (!a) { location.hash = '#/'; return; }
   setTitle(nuevo ? 'Nuevo aforo' : 'Aforo', `#/jornada/${encodeURIComponent(a.jornadaId)}`);
-  a.x = Object.assign({ lat: '', lng: '', acc: '', pasto: '', estado: '', dias: '', ms: '', obs: '', animales: '' }, a.x);
+  a.x = Object.assign({ lat: '', lng: '', acc: '', pasto: '', estado: '', dias: '', ms: '', obs: '', animales: '', pesoTotal: '' }, a.x);
   const P = await paramsPastoreo();
   view().innerHTML = `
   <form id="frm">
@@ -657,7 +660,8 @@ async function vistaAforo(id, jornadaId) {
         ${fSel('estado', 'Estado del potrero', lista('Estado_Potrero'), a.x.estado)}
         ${fNum('dias', 'Días de descanso', a.x.dias, '', 'placeholder="Si se sabe"')}
         ${fNum('ms', 'Materia seca', a.x.ms, '% MS', 'placeholder="Si se mide"')}
-        ${fNum('animales', 'Animales a pastorear', a.x.animales, '', `placeholder="${P.loteAnimales ? `Lote de Ajustes: ${P.loteAnimales}` : 'Opcional'}"`)}
+        ${fNum('animales', 'Animales a pastorear', a.x.animales, '', `placeholder="${P.loteAnimales ? `Ajustes: ${P.loteAnimales}` : 'Opcional'}"`)}
+        ${fNum('pesoTotal', 'Peso total del lote', a.x.pesoTotal, 'kg PV', `placeholder="${P.pesoTotal ? `Ajustes: ${P.pesoTotal}` : 'Opcional'}"`)}
       </div>
       ${datalist('dlPot', lista('Potrero'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', lista('Arvense'))}
     </div>
@@ -705,7 +709,7 @@ async function vistaAforo(id, jornadaId) {
       ${num(frm.ms.value) !== '' && c.kgHa !== '' ? `<p class="small">Materia seca: <b>${fmt(c.kgHa * num(frm.ms.value) / 100, 0)} kg MS/ha</b>${c.oferta !== '' ? ` · ${fmt(c.oferta * num(frm.ms.value) / 100, 0)} kg MS en el potrero` : ''}</p>` : ''}
       ${c.oferta === '' && c.kgHa !== '' ? '<p class="muted small">Sin área del potrero: se reporta solo kg/ha.</p>' : ''}
       ${c.cv !== '' ? `<p class="muted small">Variabilidad entre marcos (CV): ${fmt(c.cv, 0)} %${c.cv > 40 ? ' — alta, conviene lanzar más marcos.' : ''}</p>` : ''}
-      ${bloquePastoreo(c, frm.ms.value, P, frm.animales.value)}`;
+      ${bloquePastoreo(c, frm.ms.value, P, { animales: frm.animales.value, pesoTotal: frm.pesoTotal.value })}`;
   };
   recalcular();
 
@@ -754,7 +758,7 @@ async function vistaAforo(id, jornadaId) {
     if (clng > 0 && clat > -5 && clat < 15 && confirm(`La longitud ${clng} es positiva (quedaría en Asia). ¿Cambiarla a -${clng} (Oeste)?`)) { clng = -clng; frm.clng.value = String(clng); }
     if (clat !== a.x.lat || clng !== a.x.lng) a.x.acc = '';
     a.x = { lat: clat, lng: clng, acc: a.x.acc, pasto: frm.pasto.value.trim(), estado: frm.estado.value, dias: num(frm.dias.value),
-      ms: num(frm.ms.value), obs: frm.obs.value.trim(), animales: num(frm.animales.value) };
+      ms: num(frm.ms.value), obs: frm.obs.value.trim(), animales: num(frm.animales.value), pesoTotal: num(frm.pesoTotal.value) };
     if (a.x.ms !== '' && (a.x.ms <= 0 || a.x.ms > 100)) return toast('% de materia seca debe estar entre 0 y 100', true);
     if (!a.potrero) return toast('Indique el potrero', true);
     if (!(await confirmarPotrero(a.potrero))) return;
@@ -796,15 +800,17 @@ async function vistaAjustes() {
       <p class="small muted">Para la capacidad de carga y los días de pastoreo. Si en 5_Catalogos hay filas
         <code>Parametro_Pastoreo</code>, esas mandan sobre estos valores (así todos los dispositivos calculan igual).</p>
       <div class="grid2">
-        ${fNum('pesoKg', 'Peso vivo promedio por animal', s.pesoKg, 'kg', 'placeholder="Definir"')}
+        ${fNum('pesoKg', 'Peso vivo promedio por animal', s.pesoKg, 'kg', 'placeholder="Opcional"')}
         ${fNum('consumoPorc', 'Consumo diario', s.consumoPorc, '% del peso vivo', 'placeholder="Definir"')}
         ${fSel('baseConsumo', 'El consumo está expresado en', ['FV', 'MS'], s.baseConsumo)}
         ${fNum('msDefecto', '% MS por defecto (si la base es MS)', s.msDefecto, '%', 'placeholder="Si el aforo no lo midió"')}
         ${fNum('despPorc', 'Desperdicio', s.despPorc, '%')}
         ${fNum('periodoDias', 'Período de referencia', s.periodoDias, 'días')}
-        ${fNum('loteAnimales', 'Animales del lote (para días de pastoreo)', s.loteAnimales, '', 'placeholder="Opcional"')}
+        ${fNum('loteAnimales', 'Animales del circuito', s.loteAnimales, '', 'placeholder="Opcional"')}
+        ${fNum('pesoTotal', 'Peso total de los animales del circuito', s.pesoTotal, 'kg PV', 'placeholder="Opcional"')}
       </div>
-      <p class="small muted">FV = forraje verde · MS = materia seca.</p>
+      <p class="small muted">FV = forraje verde · MS = materia seca. Para los días de pastoreo basta con el <b>peso total</b> del circuito,
+        o con el número de animales y el peso promedio. Con el peso promedio, la capacidad se muestra también en animales.</p>
       <h3>Ubicación para el clima</h3>
       <div class="grid2">${fNum('climaLat', 'Latitud', s.climaLat)}${fNum('climaLng', 'Longitud', s.climaLng)}</div>
       <button type="button" class="btn ghost small" id="ubicClima">📍 Usar mi ubicación actual</button>
@@ -837,7 +843,7 @@ async function vistaAjustes() {
       metaKgHa: DEFAULT_SETTINGS.metaKgHa, phCritico: num(fd.get('phCritico')) || DEFAULT_SETTINGS.phCritico,
       pesoKg: num(fd.get('pesoKg')), consumoPorc: num(fd.get('consumoPorc')), baseConsumo: fd.get('baseConsumo') === 'MS' ? 'MS' : 'FV',
       msDefecto: num(fd.get('msDefecto')), despPorc: num(fd.get('despPorc')) === '' ? DEFAULT_SETTINGS.despPorc : num(fd.get('despPorc')),
-      periodoDias: num(fd.get('periodoDias')) || DEFAULT_SETTINGS.periodoDias, loteAnimales: num(fd.get('loteAnimales')),
+      periodoDias: num(fd.get('periodoDias')) || DEFAULT_SETTINGS.periodoDias, loteAnimales: num(fd.get('loteAnimales')), pesoTotal: num(fd.get('pesoTotal')),
       climaLat: num(fd.get('climaLat')) === '' ? DEFAULT_SETTINGS.climaLat : num(fd.get('climaLat')),
       climaLng: num(fd.get('climaLng')) === '' ? DEFAULT_SETTINGS.climaLng : num(fd.get('climaLng')) });
   };
@@ -929,7 +935,7 @@ async function importarCSV(txt) {
       await DB.put('records', { id: o.ID_Aforo, tipo: 'aforo', jornadaId: o.ID_Jornada, potrero: o.Potrero, area: num(o.Area_Ha),
         metodo: num(o.Metodo_M2) || 1, foto: '', muestras: prev ? prev.muestras : [],
         x: { lat: la === undefined ? '' : la, lng, acc: '', pasto: o.Pasto_Predominante || '', estado: o.Estado_Potrero || '',
-          dias: num(o.Dias_Descanso), ms: num(o.MS_Porc), obs: o.Observaciones || '', animales: num(o.Animales_Lote) },
+          dias: num(o.Dias_Descanso), ms: num(o.MS_Porc), obs: o.Observaciones || '', animales: num(o.Animales_Lote), pesoTotal: num(o.Peso_Total_Lote_Kg) },
         sync: 'pending', updatedAt: ahora });
     }
     return `${objs.length} aforos importados. Ahora importe sus marcos (4_Aforos_Detalle).`;
@@ -1035,10 +1041,11 @@ function construirFilas(lote, jornadas, urlFoto, P) {
         Ubicacion: coordTxt(x.lat, x.lng), Pasto_Predominante: x.pasto || '', Estado_Potrero: x.estado || '', Dias_Descanso: x.dias ?? '',
         MS_Porc: x.ms ?? '', Kg_MS_Ha: x.ms !== '' && x.ms != null && c.kgHa !== '' ? round(c.kgHa * x.ms / 100, 0) : '', Observaciones: x.obs || '',
         // Pastoreo con los parámetros vigentes al sincronizar (vacío si faltan parámetros o área).
-        ...(() => { const r = P && c.oferta !== '' ? calcPastoreo(c.oferta, x.ms, P, x.animales) : { listo: false };
-          return r.listo ? { Animales_Lote: r.animales || '', Forraje_Aprovechable_Kg: round(r.aprovechable, 0),
-            Capacidad_Animales_Ref: Math.floor(r.capacidad), Dias_Pastoreo: r.dias !== '' ? round(r.dias, 1) : '' }
-            : { Animales_Lote: x.animales ?? '', Forraje_Aprovechable_Kg: '', Capacidad_Animales_Ref: '', Dias_Pastoreo: '' }; })() });
+        ...(() => { const r = P && c.oferta !== '' ? calcPastoreo(c.oferta, x.ms, P, { animales: x.animales, pesoTotal: x.pesoTotal }) : { listo: false };
+          // Animales_Lote y Peso_Total_Lote_Kg: solo lo escrito en el aforo (los valores de Ajustes pueden cambiar después).
+          return r.listo ? { Animales_Lote: x.animales ?? '', Peso_Total_Lote_Kg: x.pesoTotal ?? '', Forraje_Aprovechable_Kg: round(r.aprovechable, 0),
+            Capacidad_Kg_PV_Ref: round(r.capKgPV, 0), Capacidad_Animales_Ref: r.capAnimales !== '' ? Math.floor(r.capAnimales) : '', Dias_Pastoreo: r.dias !== '' ? round(r.dias, 1) : '' }
+            : { Animales_Lote: x.animales ?? '', Peso_Total_Lote_Kg: x.pesoTotal ?? '', Forraje_Aprovechable_Kg: '', Capacidad_Kg_PV_Ref: '', Capacidad_Animales_Ref: '', Dias_Pastoreo: '' }; })() });
       for (const m of r.muestras)
         out.detalles.push({ ID_Detalle: m.id, ID_Aforo: r.id, Peso_g: m.peso, LatLong_Muestra: coordTxt(m.lat, m.lng), Potrero: r.potrero, Fecha: fecha,
           Altura_cm: m.altura ?? '', Arvenses_Marco: m.arvenses || '' });
@@ -1061,7 +1068,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

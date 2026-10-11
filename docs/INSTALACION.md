@@ -97,29 +97,33 @@ jornada de hoy se llenan solos **Clima** y **Lluvia_24h** (se pueden corregir). 
 - Sin señal se muestra el último dato guardado.
 
 ## Capacidad de carga y días de pastoreo
-Reemplaza la "meta" de kg/ha. Cálculo con el último aforo de cada potrero:
+Reemplaza la "meta" de kg/ha. Cálculo con el último aforo de cada potrero (consumo en **forraje verde**):
 
-- **Forraje aprovechable** = oferta total × (1 − desperdicio). Desperdicio por defecto: **30 %**.
-- **Demanda por animal/día** = peso vivo × consumo (% del peso vivo).
-  Si el consumo está en **materia seca (MS)**, la oferta se pasa a MS con el % MS del aforo (o el % MS por defecto).
-- **Capacidad de referencia** = aprovechable ÷ (demanda × **3 días**) → animales que pueden entrar al potrero por 3 días (se redondea hacia abajo).
-- **Días de pastoreo** = aprovechable ÷ (animales del lote × demanda).
+- **Forraje aprovechable** = oferta total × (1 − desperdicio). Desperdicio: **30 %**.
+- **Capacidad de referencia** = aprovechable ÷ (consumo % × **3 días**) → **kg de peso vivo** que el potrero sostiene 3 días.
+  Si se conoce el **peso promedio por animal**, se muestra también en **número de animales** (redondeado hacia abajo).
+- **Días de pastoreo** = aprovechable ÷ (peso total de los animales del circuito × consumo %).
 
-Los potreros sin área no tienen oferta total, así que no se calcula su capacidad.
+El peso de los animales se carga a mano, de cualquiera de estas formas:
+1. **Peso total de los animales del circuito** (kg PV), o
+2. **Número de animales** + **peso promedio**.
 
-**Peso vivo, consumo y base (FV o MS) no tienen valor por defecto**: los define el equipo técnico.
-Para que todos los dispositivos calculen igual, póngalos en `5_Catalogos` con *Categoria* = `Parametro_Pastoreo`:
+Se puede poner en Ajustes (para todo el circuito) o escribir en cada aforo ("Animales a pastorear" / "Peso total del lote"),
+que tiene prioridad. Los potreros sin área no tienen oferta total, así que no se calcula su capacidad.
+
+**El consumo (% del peso vivo) no tiene valor por defecto**: lo define el equipo técnico. Para que todos los dispositivos
+calculen igual, póngalo en `5_Catalogos` con *Categoria* = `Parametro_Pastoreo`:
 
 | Nombre_Item | Descripcion_Cientifica (valor) |
 |---|---|
-| `Peso_Kg` | peso vivo promedio, p. ej. `400` |
-| `Consumo_Porc_PV` | consumo diario en % del peso vivo |
-| `Base_Consumo` | `FV` (forraje verde) o `MS` (materia seca) |
-| `MS_Porc_Defecto` | % MS a usar si el aforo no lo midió (solo con base MS) |
+| `Consumo_Porc_PV` | consumo diario de forraje verde en % del peso vivo |
+| `Base_Consumo` | `FV` |
 | `Desperdicio_Porc` | `30` |
 | `Periodo_Dias` | `3` |
-| `Animales_Lote` | animales del lote para calcular días de pastoreo (opcional) |
+| `Peso_Total_Lote_Kg` | peso total de los animales del circuito (opcional) |
+| `Animales_Lote` | número de animales del circuito (opcional) |
+| `Peso_Kg` | peso promedio por animal (opcional) |
 
-En el aforo se puede escribir "Animales a pastorear" para ese potrero en particular. Al sincronizar se guardan en la hoja
-`Animales_Lote`, `Forraje_Aprovechable_Kg`, `Capacidad_Animales_Ref` y `Dias_Pastoreo`, calculados con los parámetros
+Al sincronizar se guardan en 3_Aforos_Cabecera: `Animales_Lote` y `Peso_Total_Lote_Kg` (solo si se escribieron en el aforo),
+`Forraje_Aprovechable_Kg`, `Capacidad_Kg_PV_Ref`, `Capacidad_Animales_Ref` y `Dias_Pastoreo`, calculados con los parámetros
 vigentes en ese momento (ejecute `setup` para crear esas columnas).
