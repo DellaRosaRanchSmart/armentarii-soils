@@ -31,7 +31,8 @@ var HEADERS = {
   arvenses: ['ID_Arvense', 'ID_Punto', 'Nombre_Arvense', 'Cobertura_Porc', 'Abundancia', 'Foto_Arvense', 'Fecha', 'Potrero'],
   aforos: ['ID_Aforo', 'ID_Jornada', 'Potrero', 'Area_Ha', 'Metodo_M2', 'Promedio_Peso_g', 'Kg_Ha_FV', 'Oferta_Total_Kg', 'Foto_General',
     'Fecha', 'Ubicacion', 'Pasto_Predominante', 'Estado_Potrero', 'Dias_Descanso', 'N_Muestras', 'CV_Porc', 'MS_Porc', 'Kg_MS_Ha', 'Observaciones',
-    'Animales_Lote', 'Peso_Total_Lote_Kg', 'Forraje_Aprovechable_Kg', 'Capacidad_Kg_PV_Ref', 'Capacidad_Animales_Ref', 'Dias_Pastoreo'],
+    'Animales_Lote', 'Peso_Total_Lote_Kg', 'Forraje_Aprovechable_Kg', 'Capacidad_Kg_PV_Ref', 'Capacidad_Animales_Ref', 'Dias_Pastoreo',
+    'Ultimo_Aforo'],
   detalles: ['ID_Detalle', 'ID_Aforo', 'Peso_g', 'LatLong_Muestra', 'Fecha', 'Potrero', 'Altura_cm', 'Arvenses_Marco'],
   catalogos: ['Categoria', 'Nombre_Item', 'Descripcion_Cientifica', 'Area_Ha']
 };
@@ -111,6 +112,16 @@ function sync_(b) {
   D.removeWhere('ID_Aforo', (b.aforos || []).map(function (r) { return r.ID_Aforo; }));
   res.detalles = D.upsert('ID_Detalle', b.detalles || []);
 
+  // Ultimo_Aforo = 1 en el aforo más reciente de cada potrero (para que Looker Studio no sume dos veces el mismo potrero).
+  var fechaJ = {};
+  J.objects().forEach(function (j) { fechaJ[String(j.ID_Jornada)] = String(j.Fecha || ''); });
+  var tz = ss_().getSpreadsheetTimeZone();
+  F.marcarUltimo('Potrero', 'Ultimo_Aforo', function (row) {
+    var f = F.val(row, 'Fecha');
+    if (f instanceof Date) return Utilities.formatDate(f, tz, 'yyyy-MM-dd');
+    return String(f || fechaJ[String(F.val(row, 'ID_Jornada'))] || '');
+  });
+
   [J, P, A, F, D].forEach(function (t) { t.save(); });
   return { escritos: res };
 }
@@ -169,6 +180,20 @@ function Table_(key) {
   }
 
   return {
+    val: function (row, name) { var i = col[key_(name)]; return i === undefined ? '' : row[i]; },
+    /** Pone 1 en la fila más reciente de cada grupo y 0 en las demás (si la columna existe). */
+    marcarUltimo: function (grupoCol, flagCol, fechaDe) {
+      if (col[key_(flagCol)] === undefined || col[key_(grupoCol)] === undefined) return;
+      var g = idx(grupoCol), f = idx(flagCol), best = {};
+      rows.forEach(function (r, n) {
+        var k = String(r[g]).trim().toUpperCase(), d = fechaDe(r);
+        if (!best[k] || d > best[k].d || (d === best[k].d && n > best[k].n)) best[k] = { d: d, n: n };
+      });
+      rows.forEach(function (r, n) {
+        var v = best[String(r[g]).trim().toUpperCase()].n === n ? 1 : 0;
+        if (r[f] !== v) { r[f] = v; dirty = true; }
+      });
+    },
     idsWhere: function (colName, value, idCol) {
       var i = idx(colName), id = idx(idCol);
       return rows.filter(function (r) { return String(r[i]) === String(value); }).map(function (r) { return String(r[id]); });
