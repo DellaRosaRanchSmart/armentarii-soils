@@ -69,19 +69,35 @@ function bandasPh() {
 const bandaPh = ph => bandasPh().find(b => ph < b.max);
 
 // ---------- Datos ----------
+/** Aviso visible: qué llegó de la hoja y qué falta por sincronizar en este dispositivo. */
+async function pintarEstado(error) {
+  const recs = await DB.all('records');
+  const pend = recs.filter(r => r.sync !== 'synced');
+  const n = k => (DATA && DATA[k] ? DATA[k].length : 0);
+  const partes = [];
+  if (error) partes.push(`<b>⚠️ No se pudo leer la hoja:</b> ${esc(error)}. Revise en Ajustes la URL y la clave, y pulse "Probar conexión".`);
+  if (DATA) partes.push(`La hoja tiene <b>${n('jornadas')}</b> jornadas, <b>${n('puntos')}</b> puntos de suelo, <b>${n('aforos')}</b> aforos y <b>${n('detalles')}</b> marcos.`);
+  if (pend.length) partes.push(`<b>📱 Hay ${pend.length} registro(s) en este dispositivo sin sincronizar</b> (no se ven en el dashboard hasta que lleguen a la hoja). <a href="index.html">Ir a ⟳ Sincronizar</a>.`);
+  else if (DATA && !n('jornadas') && !n('puntos') && !n('aforos')) partes.push('La hoja todavía está vacía.');
+  const el = $('#estado');
+  el.innerHTML = partes.join('<br>');
+  el.className = 'card small' + (error || pend.length ? ' aviso' : '');
+}
+
 async function cargar(forzar) {
   $('#fuente').textContent = 'Cargando…';
   const cache = await DB.kv('dashData', null);
-  if (cache && !forzar) { DATA = cache.data; $('#fuente').textContent = `Copia del ${new Date(cache.at).toLocaleString('es-CO')}`; render(); }
+  if (cache && !forzar) { DATA = cache.data; $('#fuente').textContent = `Copia del ${new Date(cache.at).toLocaleString('es-CO')}`; llenarFiltros(); render(); }
   try {
     const r = await apiGet({ action: 'data' });
     DATA = r;
     await DB.setKv('dashData', { data: r, at: Date.now() });
     $('#fuente').textContent = `Datos de Google Sheets · ${new Date().toLocaleString('es-CO')}`;
-    llenarFiltros(); render();
+    llenarFiltros(); render(); pintarEstado();
   } catch (err) {
-    if (!DATA) { $('#fuente').textContent = 'Sin datos'; toast(err.message, true); }
-    else { $('#fuente').textContent += ' (sin conexión)'; toast('No se pudo actualizar: ' + err.message, true); }
+    if (!DATA) $('#fuente').textContent = 'Sin datos';
+    else $('#fuente').textContent += ' (sin conexión)';
+    pintarEstado(err.message);
   }
 }
 

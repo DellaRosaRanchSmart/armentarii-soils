@@ -33,6 +33,8 @@
     .scroll { overflow-x: auto; }
     .card h3 { display: block; margin-bottom: 8px; }
     [hidden] { display: none !important; }
+    #estado.aviso { border-color: var(--warn); background: var(--warn-bg); }
+    #estado:empty { display: none; }
   </style>
 </head>
 <body>
@@ -45,6 +47,7 @@
       <span id="fuente" class="muted small"></span>
       <button class="btn sec small" id="recargar">⟳ Actualizar datos</button>
     </div>
+    <div id="estado" class="card small"></div>
     <div class="card filters">
       <label class="fld"><span>Jornada</span><select id="fJornada"></select></label>
       <label class="fld"><span>Potrero</span><select id="fPotrero"></select></label>
