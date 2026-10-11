@@ -71,11 +71,21 @@ async function getSettings() { return Object.assign({}, DEFAULT_SETTINGS, await 
 // ---------------- API (Google Apps Script) ----------------
 /* POST sin cabecera Content-Type => "simple request" (text/plain), así el navegador
    no hace preflight CORS, que Apps Script no soporta. */
+/** Apps Script a veces responde con una página HTML (error, inicio de sesión, permisos) en vez de JSON. */
+async function leerRespuesta(res) {
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch (_) { /* no es JSON */ }
+  const doc = new DOMParser().parseFromString(txt, 'text/html');
+  const titulo = (doc.title || '').trim();
+  const cuerpo = (doc.body ? doc.body.innerText : txt).replace(/\s+/g, ' ').trim().slice(0, 160);
+  throw new Error(`Google respondió con una página en vez de datos (HTTP ${res.status}${titulo ? ` · "${titulo}"` : ''}): ${cuerpo}`);
+}
+
 async function apiPost(body) {
   const s = await getSettings();
   if (!s.url) throw new Error('Falta configurar la URL del Apps Script (Ajustes).');
   const res = await fetch(s.url, { method: 'POST', body: JSON.stringify(Object.assign({}, body, { token: s.token })) });
-  const j = await res.json();
+  const j = await leerRespuesta(res);
   if (!j.ok) throw new Error(j.error || 'Error del servidor');
   return j;
 }
@@ -85,7 +95,7 @@ async function apiGet(params) {
   if (!s.url) throw new Error('Falta configurar la URL del Apps Script (Ajustes).');
   const q = new URLSearchParams(Object.assign({}, params, { token: s.token }));
   const res = await fetch(`${s.url}${s.url.includes('?') ? '&' : '?'}${q}`);
-  const j = await res.json();
+  const j = await leerRespuesta(res);
   if (!j.ok) throw new Error(j.error || 'Error del servidor');
   return j;
 }
