@@ -860,7 +860,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

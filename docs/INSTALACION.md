@@ -21,7 +21,7 @@
 El script acepta `2_Arvenses` o `2_Arvenses_Punto` (en su mensaje aparecen los dos nombres). Use uno solo.
 
 ### Potreros
-La app ya trae el listado de los 295 potreros de la finca (`app/potreros.js`: código, área total, área de pastoreo y tipo de pasto).
+La app ya trae el listado de los 333 potreros de la finca (`app/potreros.js`: código, área total, área de pastoreo y tipo de pasto).
 Al elegir un potrero se rellenan solos el **área de pastoreo** (para la oferta total) y el **pasto predominante**; se pueden editar.
 Si un potrero no está en el listado, la app avisa antes de guardar. Para agregar o corregir potreros, edite `app/potreros.js`
 o agréguelos en `5_Catalogos` (Categoria `Potrero`; si pone `Area_Ha`, esa área tiene prioridad).
