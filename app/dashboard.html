@@ -35,6 +35,11 @@
     [hidden] { display: none !important; }
     #estado.aviso { border-color: var(--warn); background: var(--warn-bg); }
     #estado:empty { display: none; }
+    .st { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 13px; white-space: nowrap; }
+    .st-bajo { background: rgba(208, 59, 59, .16); } .st-ok { background: rgba(12, 163, 12, .14); }
+    .st-alto { background: rgba(250, 178, 25, .22); } .st-sinrango { background: transparent; color: var(--muted); }
+    td.cell { text-align: center; } th.vert { text-align: center; }
+    .grp td { background: var(--bg); font-weight: 600; color: var(--ink2); text-align: left; }
   </style>
 </head>
 <body>
@@ -56,8 +61,9 @@
     </div>
     <div class="tabs" role="tablist">
       <button class="btn ghost small" role="tab" data-tab="suelos" aria-selected="true">1 · Fertilidad</button>
-      <button class="btn ghost small" role="tab" data-tab="forrajes">2 · Forrajes</button>
-      <button class="btn ghost small" role="tab" data-tab="botanica">3 · Botánica</button>
+      <button class="btn ghost small" role="tab" data-tab="diagnostico">2 · Diagnóstico de nutrientes</button>
+      <button class="btn ghost small" role="tab" data-tab="forrajes">3 · Forrajes</button>
+      <button class="btn ghost small" role="tab" data-tab="botanica">4 · Botánica</button>
     </div>
 
     <section id="tab-suelos">
@@ -69,6 +75,19 @@
         <div class="card"><h3>Materia orgánica vs. nitrógeno</h3><div class="chart"><canvas id="cMoN"></canvas></div></div>
         <div class="card wide"><h3>Promedios químicos por potrero</h3><div class="scroll" id="tNutr"></div></div>
       </div>
+    </section>
+
+    <section id="tab-diagnostico" hidden>
+      <p class="muted small">Cada lectura se compara con su rango de referencia: <b>↓ Bajo</b>, <b>✓ Adecuado</b> o <b>↑ Alto</b>.
+        Los rangos y su fuente están en la tabla; se pueden cambiar desde <b>5_Catalogos</b> (ver nota al final).</p>
+      <div class="tiles" id="tilesDiag"></div>
+      <div class="charts">
+        <div class="card wide"><h3>Estado de las lecturas por parámetro (% de puntos)</h3>
+          <div class="legend" id="legDiag"></div><div class="chart" id="boxDiag"><canvas id="cDiag"></canvas></div></div>
+        <div class="card wide"><h3>Semáforo por parámetro</h3><div class="scroll" id="tDiag"></div></div>
+        <div class="card wide"><h3>Potrero × parámetro (promedio del potrero)</h3><div class="scroll" id="tMatriz"></div></div>
+      </div>
+      <div class="card small muted" id="notaRangos"></div>
     </section>
 
     <section id="tab-forrajes" hidden>
@@ -95,6 +114,7 @@
   <script src="vendor/chart.umd.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="common.js"></script>
+  <script src="rangos.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

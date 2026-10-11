@@ -93,6 +93,7 @@ async function cargar(forzar) {
     DATA = r;
     await DB.setKv('dashData', { data: r, at: Date.now() });
     $('#fuente').textContent = `Datos de Google Sheets · ${new Date().toLocaleString('es-CO')}`;
+    try { const cat = await apiGet({ action: 'catalogos' }); await DB.setKv('catalogos', { items: cat.items || [], at: Date.now() }); aplicarRangos(cat.items); } catch (_) { /* rangos por defecto */ }
     llenarFiltros(); render(); pintarEstado();
   } catch (err) {
     if (!DATA) $('#fuente').textContent = 'Sin datos';
@@ -128,10 +129,121 @@ function filtrado() {
 
 // ---------- Render ----------
 let tabActual = 'suelos';
+// ---------- Diagnóstico de nutrientes ----------
+let RANGOS = RANGOS_SUELO.map(r => r.slice());
+const ESTADOS = {
+  bajo: { label: 'Bajo', icon: '↓', color: '#d03b3b' },
+  ok: { label: 'Adecuado', icon: '✓', color: '#0ca30c' },
+  alto: { label: 'Alto', icon: '↑', color: '#fab219' },
+  sinrango: { label: 'Sin rango', icon: '·', color: '#898781' },
+};
+/** "1.5-3" → [1.5, 3]; ">0.75" → [0.75, null]; "<2000" → [null, 2000] */
+function parseRango(txt) {
+  const t = String(txt || '').trim().replace(/\s/g, '');
+  if (!t) return null;
+  if (t[0] === '>') return [num(t.slice(1)), null];
+  if (t[0] === '<') return [null, num(t.slice(1))];
+  const m = t.split(/[;–]|-(?=\d)/);
+  if (m.length === 2 && num(m[0]) !== '' && num(m[1]) !== '') return [num(m[0]), num(m[1])];
+  return null;
+}
+/** Filas Categoria=Rango_Suelo de 5_Catalogos reemplazan los rangos por defecto. */
+function aplicarRangos(items) {
+  RANGOS = RANGOS_SUELO.map(r => r.slice());
+  (items || []).filter(c => String(c.Categoria || '').toLowerCase().replace(/[\s_]/g, '') === 'rangosuelo').forEach(c => {
+    const r = RANGOS.find(x => x[0].toLowerCase() === String(c.Nombre_Item || '').trim().toLowerCase());
+    const v = parseRango(c.Descripcion_Cientifica);
+    if (r && v) { r[4] = v[0] === '' ? null : v[0]; r[5] = v[1] === '' ? null : v[1]; r[6] = '5_Catalogos'; }
+  });
+}
+function estadoDe(v, r) {
+  if (v === '' || v == null) return null;
+  if (r[4] == null && r[5] == null) return 'sinrango';
+  if (r[4] != null && v < r[4]) return 'bajo';
+  if (r[5] != null && v > r[5]) return 'alto';
+  return 'ok';
+}
+function textoRango(r) {
+  if (r[4] != null && r[5] != null) return `${fmt(r[4], 2)} – ${fmt(r[5], 2)}`;
+  if (r[4] != null) return `> ${fmt(r[4], 2)}`;
+  if (r[5] != null) return `< ${fmt(r[5], 2)}`;
+  return '—';
+}
+const chip = (st, txt) => st ? `<span class="st st-${st}">${ESTADOS[st].icon} ${txt}</span>` : '<span class="muted">—</span>';
+
+function renderDiagnostico(d) {
+  const c = C(), P = d.puntos;
+  const conRango = RANGOS.filter(r => r[4] != null || r[5] != null);
+  const filas = RANGOS.map(r => {
+    const vals = P.map(p => num(p[r[0]])).filter(v => v !== '');
+    const cuenta = { bajo: 0, ok: 0, alto: 0 };
+    vals.forEach(v => { const e = estadoDe(v, r); if (cuenta[e] !== undefined) cuenta[e]++; });
+    const prom = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : '';
+    return { r, n: vals.length, prom, min: vals.length ? Math.min(...vals) : '', max: vals.length ? Math.max(...vals) : '', cuenta, est: estadoDe(prom, r) };
+  });
+  const evaluadas = filas.filter(f => f.est && f.est !== 'sinrango');
+  const lecturas = evaluadas.reduce((a, f) => a + f.cuenta.bajo + f.cuenta.ok + f.cuenta.alto, 0);
+  const fuera = evaluadas.reduce((a, f) => a + f.cuenta.bajo + f.cuenta.alto, 0);
+  const promFuera = evaluadas.filter(f => f.est !== 'ok');
+  tiles('#tilesDiag', [
+    ['Puntos analizados', P.filter(p => num(p.pH) !== '' || num(p.P_ppm) !== '').length, `de ${P.length} en el filtro`],
+    ['Parámetros con rango', `${conRango.length} / ${RANGOS.length}`, conRango.length < RANGOS.length ? `${RANGOS.length - conRango.length} sin rango definido` : ''],
+    ['Lecturas fuera de rango', lecturas ? `${fmt((fuera / lecturas) * 100, 0)} %` : '—', `${fuera} de ${lecturas} lecturas`],
+    ['Promedios fuera de rango', promFuera.length, promFuera.map(f => `${f.r[1].split(' (')[0]} ${ESTADOS[f.est].icon}`).join(' · ')],
+  ]);
+
+  // Barras apiladas: % de puntos bajo / adecuado / alto por parámetro (solo parámetros con rango y datos)
+  const g = filas.filter(f => f.n && (f.r[4] != null || f.r[5] != null));
+  $('#boxDiag').style.height = `${Math.max(160, g.length * 38 + 60)}px`;
+  $('#legDiag').innerHTML = ['bajo', 'ok', 'alto'].map(k => `<span><i style="background:${ESTADOS[k].color};border-radius:3px"></i>${ESTADOS[k].icon} ${ESTADOS[k].label}</span>`).join('');
+  const pct = (f, k) => (f.n ? Math.round((f.cuenta[k] / f.n) * 1000) / 10 : 0);
+  draw('cDiag', {
+    type: 'bar',
+    data: {
+      labels: g.map(f => f.r[1]),
+      datasets: ['bajo', 'ok', 'alto'].map(k => ({ label: `${ESTADOS[k].icon} ${ESTADOS[k].label}`, data: g.map(f => pct(f, k)),
+        backgroundColor: ESTADOS[k].color, borderColor: c.surface, borderWidth: { left: 1, right: 1 }, maxBarThickness: 24 })),
+    },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: x => `${x.dataset.label}: ${g[x.dataIndex].cuenta[['bajo', 'ok', 'alto'][x.datasetIndex]]} de ${g[x.dataIndex].n} puntos (${fmt(x.raw, 0)} %)` } } },
+      scales: { x: { stacked: true, max: 100, ticks: { callback: v => v + ' %' }, grid: { color: c.grid } }, y: { stacked: true, grid: { display: false } } } },
+  });
+
+  // Semáforo
+  let grupo = '';
+  $('#tDiag').innerHTML = !P.length ? '<p class="muted">Sin datos para el filtro.</p>' : `<table><thead><tr>
+      <th>Parámetro</th><th>Rango ref.</th><th>Promedio</th><th>Mín – Máx</th><th>↓ Bajo</th><th>✓ Adec.</th><th>↑ Alto</th><th>Estado del promedio</th><th>Fuente</th>
+    </tr></thead><tbody>${filas.map(f => {
+      const cab = f.r[2] !== grupo ? `<tr class="grp"><td colspan="9">${esc(grupo = f.r[2])}</td></tr>` : '';
+      const u = f.r[3] ? ` ${esc(f.r[3])}` : '';
+      return cab + `<tr><td>${esc(f.r[1])}</td><td>${textoRango(f.r)}${f.r[4] != null || f.r[5] != null ? u : ''}</td>
+        <td>${fmt(f.prom, 2)}${f.prom !== '' ? u : ''}</td><td>${f.n ? `${fmt(f.min, 2)} – ${fmt(f.max, 2)}` : '—'}</td>
+        <td>${f.n && f.est !== 'sinrango' ? f.cuenta.bajo : '—'}</td><td>${f.n && f.est !== 'sinrango' ? f.cuenta.ok : '—'}</td><td>${f.n && f.est !== 'sinrango' ? f.cuenta.alto : '—'}</td>
+        <td>${f.n ? chip(f.est, ESTADOS[f.est].label) : '<span class="muted">Sin lecturas</span>'}</td><td class="muted">${esc(f.r[6] || '—')}</td></tr>`;
+    }).join('')}</tbody></table>`;
+
+  // Matriz potrero × parámetro
+  const pots = Object.entries(groupBy(P, 'Potrero')).sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }));
+  $('#tMatriz').innerHTML = !pots.length ? '<p class="muted">Sin datos para el filtro.</p>' : `<table><thead><tr><th>Potrero</th>${RANGOS.map(r =>
+      `<th class="vert" title="${esc(r[1])}">${esc(r[0].replace('_ppm', '').replace('_porc', ''))}</th>`).join('')}</tr></thead><tbody>${pots.map(([pot, ps]) =>
+      `<tr><td>${esc(pot)} <span class="muted small">(${ps.length})</span></td>${RANGOS.map(r => {
+        const v = avg(ps.map(p => p[r[0]]));
+        return `<td class="cell">${v === '' ? '<span class="muted">—</span>' : chip(estadoDe(v, r), fmt(v, Math.abs(v) < 1 ? 2 : 1))}</td>`;
+      }).join('')}</tr>`).join('')}</tbody></table>`;
+
+  const sin = RANGOS.filter(r => r[4] == null && r[5] == null).map(r => r[1]);
+  $('#notaRangos').innerHTML = `<b>Rangos de referencia.</b> Por defecto se usan los rangos óptimos que imprime el sensor SOILO para "Pasture Grass".
+    ${sin.length ? `Sin rango definido (SOILO no los publica): ${esc(sin.join(', '))}.` : ''}
+    Para definirlos o cambiarlos, agregue en <b>5_Catalogos</b> filas con <i>Categoria</i> = <code>Rango_Suelo</code>,
+    <i>Nombre_Item</i> = la columna (p. ej. <code>Zn_ppm</code>) y <i>Descripcion_Cientifica</i> = <code>mín-máx</code>
+    (p. ej. <code>1.5-3</code>, <code>&gt;0.75</code> o <code>&lt;2000</code>). Valide los rangos con el agrónomo o el laboratorio.`;
+}
+
 function render() {
   if (!DATA) return;
   const d = filtrado();
   if (tabActual === 'suelos') renderSuelos(d);
+  if (tabActual === 'diagnostico') renderDiagnostico(d);
   if (tabActual === 'forrajes') renderForrajes(d);
   if (tabActual === 'botanica') renderBotanica(d);
 }
@@ -313,10 +425,12 @@ function renderBotanica(d) {
 (async function () {
   await DB.open();
   S = await getSettings();
+  const catLocal = await DB.kv('catalogos', null);
+  aplicarRangos(catLocal ? catLocal.items : []);
   $$('[role=tab]').forEach(b => b.onclick = () => {
     tabActual = b.dataset.tab;
     $$('[role=tab]').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-    ['suelos', 'forrajes', 'botanica'].forEach(t => ($(`#tab-${t}`).hidden = t !== tabActual));
+    ['suelos', 'diagnostico', 'forrajes', 'botanica'].forEach(t => ($(`#tab-${t}`).hidden = t !== tabActual));
     render();
   });
   ['#fJornada', '#fPotrero', '#fDesde', '#fHasta'].forEach(s => $(s).addEventListener('change', render));

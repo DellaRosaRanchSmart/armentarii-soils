@@ -205,6 +205,7 @@ function toast(msg, err = false) {
 }
 function setTitle(t, back) {
   $('#title').textContent = t;
+  $('.status').hidden = !back;
   $('#back').hidden = !back;
   $('#back').onclick = () => { if (!dirty || confirm('Hay cambios sin guardar. ¿Salir?')) { dirty = false; location.hash = back; } };
 }
@@ -223,29 +224,81 @@ async function actualizarEstado() {
 }
 
 // ---------------- Vistas ----------------
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
 async function vistaInicio() {
   setTitle('Agronomía · El Rosario');
   const recs = await DB.all('records');
   const jornadas = recs.filter(r => r.tipo === 'jornada').sort((a, b) => (b.f.Fecha || '').localeCompare(a.f.Fecha || '') || b.updatedAt - a.updatedAt);
   const cuenta = (id, t) => recs.filter(r => r.tipo === t && r.jornadaId === id).length;
+  const total = t => recs.filter(r => r.tipo === t).length;
+  const fotos = await DB.all('fotos');
+  const pend = recs.filter(r => r.sync !== 'synced').length + fotos.filter(f => !f.url && f.dataUrl).length + (await DB.kv('deletes', [])).length;
+  const ultima = await DB.kv('ultimaSync', null);
+  const hoy = new Date();
+  const fl = hoy.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fechaLarga = fl.charAt(0).toUpperCase() + fl.slice(1);
+  const saludo = hoy.getHours() < 12 ? 'Buenos días' : hoy.getHours() < 18 ? 'Buenas tardes' : 'Buenas noches';
+  const resp = await DB.kv('ultimoResponsable', '');
+  const fechaChip = f => { const [y, m, d] = String(f || '').split('-'); return d ? `<div class="fchip"><b>${+d}</b><span>${MESES[+m - 1] || ''}</span><small>${y}</small></div>` : '<div class="fchip">—</div>'; };
   view().innerHTML = `
-    <div class="row gap">
-      <a class="btn" href="#/jornada/nueva">＋ Nueva jornada</a>
-      <button class="btn sec" id="btnSync">⟳ Sincronizar</button>
+    <section class="hero">
+      <div class="hero-txt">
+        <div class="hero-kicker">${esc(saludo)}${resp ? `, ${esc(resp.split(' ')[0])}` : ''} · ${esc(fechaLarga)}</div>
+        <div class="hero-title">Ganadería El Rosario</div>
+        <div class="hero-sub">Suelos, arvenses y aforos de forraje — funciona sin señal</div>
+      </div>
+      <svg class="hero-art" viewBox="0 0 120 80" aria-hidden="true"><path d="M0 62 C30 50 50 70 80 58 S110 50 120 54 V80 H0Z" fill="rgba(255,255,255,.18)"/>
+        <path d="M0 70 C35 60 60 78 120 64 V80 H0Z" fill="rgba(255,255,255,.28)"/><circle cx="96" cy="20" r="10" fill="rgba(255,236,170,.9)"/>
+        <path d="M30 60 V40 M30 46 C24 42 22 36 23 32 C28 34 31 39 30 46 M30 50 C36 46 39 40 38 35 C33 37 30 43 30 50" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    </section>
+
+    <div class="acciones">
+      <a class="accion primaria" href="#/jornada/nueva"><span class="ico">🗓️</span><b>Nueva jornada</b><small>Fecha, clima y responsable</small></a>
+      <a class="accion" href="#/rapido/punto"><span class="ico">🧪</span><b>Punto de suelo</b><small>GPS, campo y laboratorio</small></a>
+      <a class="accion" href="#/rapido/aforo"><span class="ico">🌾</span><b>Aforo</b><small>Marcos y oferta del potrero</small></a>
+      <a class="accion" href="dashboard.html"><span class="ico">📊</span><b>Dashboard</b><small>Fertilidad, nutrientes, forraje</small></a>
     </div>
-    <div class="row gap">
-      <a class="btn ghost" href="dashboard.html">📊 Dashboard</a>
-      <a class="btn ghost" href="#/ajustes">⚙️ Ajustes</a>
+
+    <div class="sync ${pend ? 'pendiente' : 'aldia'}">
+      <div><b>${pend ? `${pend} registro${pend > 1 ? 's' : ''} por sincronizar` : 'Todo sincronizado'}</b>
+        <small>${ultima ? `Última sincronización: ${new Date(ultima).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Aún no se ha sincronizado desde este dispositivo'}</small></div>
+      <button class="btn ${pend ? '' : 'sec'}" id="btnSync">⟳ Sincronizar</button>
     </div>
-    <h2>Jornadas en este teléfono</h2>
-    ${jornadas.length ? jornadas.map(j => `
-      <a class="card link" href="#/jornada/${encodeURIComponent(j.id)}">
-        <div class="row between"><strong>${esc(j.f.Fecha)} · ${esc(j.f.Responsable || 'Sin responsable')}</strong>
-          <span class="pill ${j.sync === 'synced' ? 'ok' : 'warn'}">${j.sync === 'synced' ? '✓' : '●'}</span></div>
-        <div class="muted">${cuenta(j.id, 'punto')} puntos de suelo · ${cuenta(j.id, 'aforo')} aforos · ${esc(j.f.Estado || '')}</div>
-        <div class="muted small">${esc(j.id)}</div>
-      </a>`).join('') : '<p class="muted">Aún no hay jornadas. Cree una para empezar a capturar.</p>'}`;
+
+    <div class="stats">
+      <div><b>${total('jornada')}</b><span>Jornadas</span></div>
+      <div><b>${total('punto')}</b><span>Puntos de suelo</span></div>
+      <div><b>${total('aforo')}</b><span>Aforos</span></div>
+      <div><b>${POTREROS.length}</b><span>Potreros</span></div>
+    </div>
+
+    <div class="row between"><h2>Jornadas recientes</h2><a class="small linkbtn" href="#/ajustes">⚙️ Ajustes</a></div>
+    ${jornadas.length ? jornadas.slice(0, 30).map(j => `
+      <a class="card link jcard" href="#/jornada/${encodeURIComponent(j.id)}">
+        ${fechaChip(j.f.Fecha)}
+        <div class="jinfo">
+          <div class="row between"><strong>${esc(j.f.Responsable || 'Sin responsable')}</strong>
+            <span class="pill ${j.sync === 'synced' ? 'ok' : 'warn'}">${j.sync === 'synced' ? '✓ En la hoja' : '● Pendiente'}</span></div>
+          <div class="muted small">🧪 ${cuenta(j.id, 'punto')} puntos · 🌾 ${cuenta(j.id, 'aforo')} aforos${j.f.Clima ? ` · ${esc(j.f.Clima)}` : ''}${j.f.Estado ? ` · ${esc(j.f.Estado)}` : ''}</div>
+        </div>
+      </a>`).join('') : `<div class="card vacio"><span class="ico">🌱</span><b>Aún no hay jornadas en este dispositivo</b>
+        <small>Cree una jornada para empezar a capturar, o importe datos desde ⚙️ Ajustes.</small></div>`}`;
   $('#btnSync').onclick = sincronizar;
+}
+
+/** Acceso rápido: usa la jornada de hoy (o la crea) y abre el formulario. */
+async function rapido(tipo) {
+  const hoy = ymd(new Date());
+  const recs = await DB.all('records');
+  let j = recs.filter(r => r.tipo === 'jornada' && r.f.Fecha === hoy).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!j) {
+    j = { id: uid('J'), tipo: 'jornada', f: { Fecha: hoy, Responsable: await DB.kv('ultimoResponsable', ''), Clima: '', Lluvia_24h: '', Estado: 'Abierta', Notas: '' },
+      sync: 'pending', updatedAt: Date.now() };
+    await DB.put('records', j);
+    toast('Se creó la jornada de hoy');
+  }
+  location.replace(`#/${tipo}/nuevo/${encodeURIComponent(j.id)}`);
 }
 
 async function vistaJornada(id) {
@@ -804,6 +857,7 @@ async function sincronizar() {
         if (actual && actual.updatedAt === r.updatedAt) { actual.sync = 'synced'; actual.everSynced = true; await DB.put('records', actual); }
       }
     }
+    await DB.setKv('ultimaSync', Date.now());
     try { await bajarCatalogos(); } catch (_) { /* los catálogos no son críticos */ }
     toast(pend.length || pendFotos.length || deletes.length ? 'Sincronización completa ✓' : 'No había nada pendiente');
   } catch (err) {
@@ -856,11 +910,12 @@ async function router() {
     if (parts[0] === 'punto' && parts[1]) return await vistaPunto(parts[1], parts[2]);
     if (parts[0] === 'aforo' && parts[1]) return await vistaAforo(parts[1], parts[2]);
     if (parts[0] === 'ajustes') return await vistaAjustes();
+    if (parts[0] === 'rapido' && ['punto', 'aforo'].includes(parts[1])) return await rapido(parts[1]);
     return await vistaInicio();
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.2.3';
+const APP_VERSION = '1.3.0';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);
