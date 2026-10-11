@@ -336,7 +336,7 @@ async function pintarForraje(recs) {
     <div class="card forraje">
       <div class="forr-res">
         <div><b>${fmt(totalOferta, 0)} kg FV</b><span>oferta total (último aforo de ${filas.length} potrero${filas.length > 1 ? 's' : ''})</span></div>
-        <div><b>${listos.length ? `${fmt(capTotal, 0)} ${enAnimales ? 'animales' : 'kg PV'}` : '—'}</b><span>capacidad para ${fmt(P.periodoDias || 3, 0)} días (con ${fmt(P.despPorc, 0)} % de desperdicio)</span></div>
+        <div><b>${listos.length ? `${listos[0].r.rango ? `${fmt(capTotal, 0)} – ${fmt(listos.reduce((t, a) => t + capNum(a.r.alto), 0), 0)}` : fmt(capTotal, 0)} ${enAnimales ? 'animales' : 'kg PV'}` : '—'}</b><span>capacidad para ${fmt(P.periodoDias || 3, 0)} días (con ${fmt(P.despPorc, 0)} % de desperdicio)</span></div>
       </div>
       ${falta ? `<p class="small aviso-param">🐄 Para calcular capacidad de carga y días de pastoreo, defina en <a href="#/ajustes">Ajustes</a>: ${esc(falta.r.falta.join(', '))}.</p>` : ''}
       ${filas.slice(0, 12).map(a => `
@@ -345,11 +345,11 @@ async function pintarForraje(recs) {
           ${a.r.listo ? `<div class="barra" role="img" aria-label="${esc(a.potrero)}: capacidad ${textoCapacidad(a.r)} por ${a.r.periodo} días">
             <i style="width:${Math.max(2, (a.r.capKgPV / maxCap) * 100)}%"></i></div>` : ''}
           <div class="small">${a.r.listo ? `🐄 <b>${textoCapacidad(a.r)}</b> × ${fmt(a.r.periodo, 0)} días
-            ${a.r.dias !== '' ? ` · ⏱️ <b>${fmt(a.r.dias, 1)}</b> días con ${textoLote(a.r)}` : ''} · ` : ''}
+            ${a.r.dias !== '' ? ` · ⏱️ <b>${textoDias(a.r)}</b> días con ${textoLote(a.r)}` : ''} · ` : ''}
             ${fmt(a.kgHa, 0)} kg FV/ha · ${a.oferta !== '' ? `oferta ${fmt(a.oferta, 0)} kg` : '<span class="muted">sin área: no se calcula capacidad</span>'}</div>
         </div>`).join('')}
       ${filas.length > 12 ? `<p class="small muted">… y ${filas.length - 12} potreros más en el dashboard.</p>` : ''}
-      ${listos.length ? `<p class="small muted">Consumo ${fmt(P.consumoPorc, 1)} % del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''}${listos.some(a => a.r.dias !== '') ? '' : ' · para los días de pastoreo, cargue el peso total del circuito en Ajustes'}.</p>` : ''}
+      ${listos.length ? `<p class="small muted">Consumo ${textoConsumo(P)} del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''}${listos.some(a => a.r.dias !== '') ? '' : ' · para los días de pastoreo, cargue el peso total del circuito en Ajustes'}.</p>` : ''}
     </div>`;
 }
 
@@ -618,12 +618,13 @@ function bloquePastoreo(c, ms, P, lote) {
     <div class="kpis">
       <div><span>Forraje aprovechable (−${fmt(P.despPorc, 0)} % desperdicio)</span><b>${fmt(r.aprovechable, 0)} ${r.unidad}${porHa ? '/ha' : ''}</b></div>
       <div><span>Capacidad para ${fmt(r.periodo, 0)} días</span><b>${textoCapacidad(r, porHa)}</b></div>
-      <div><span>Días de pastoreo${!porHa && r.pesoTotal ? ` con ${textoLote(r)}` : ''}</span><b>${!porHa && r.dias !== '' ? fmt(r.dias, 1) + ' días' : '—'}</b></div>
-      <div><span>${r.demandaAnimal !== '' ? 'Demanda por animal' : 'Consumo'}</span><b>${r.demandaAnimal !== '' ? `${fmt(r.demandaAnimal, 1)} ${r.unidad}/día` : `${fmt(P.consumoPorc, 1)} % PV/día`}</b></div>
+      <div><span>Días de pastoreo${!porHa && r.pesoTotal ? ` con ${textoLote(r)}` : ''}</span><b>${!porHa && r.dias !== '' ? textoDias(r) + ' días' : '—'}</b></div>
+      <div><span>${r.demandaAnimal !== '' ? 'Demanda por animal' : 'Consumo'}</span><b>${r.demandaAnimal !== '' ? `${r.rango ? `${fmt(r.alto.demandaAnimal, 1)} – ` : ''}${fmt(r.demandaAnimal, 1)} ${r.unidad}/día` : `${textoConsumo(P)} PV/día`}</b></div>
     </div>
     ${!porHa && r.dias === '' ? '<p class="small muted">Para los días de pastoreo escriba el peso total del lote o el número de animales (con peso promedio en Ajustes).</p>' : ''}
     ${r.capAnimales === '' ? '<p class="small muted">Con el peso promedio por animal (Ajustes) la capacidad se muestra también en número de animales.</p>' : ''}
-    <p class="small muted">Consumo ${fmt(P.consumoPorc, 1)} % del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''} · parámetros de ${esc(P.fuente)}.</p></div>`;
+    ${r.rango ? '<p class="small muted">Rangos según el consumo: capacidad y días más bajos = consumo más alto (conservador). En la hoja se guarda el valor conservador.</p>' : ''}
+    <p class="small muted">Consumo ${textoConsumo(P)} del peso vivo en ${P.baseConsumo === 'MS' ? 'materia seca' : 'forraje verde'}${P.pesoKg ? ` · peso promedio ${fmt(P.pesoKg, 0)} kg` : ''} · parámetros de ${esc(P.fuente)}.</p></div>`;
 }
 
 // ----- Aforo por potrero -----
@@ -801,7 +802,8 @@ async function vistaAjustes() {
         <code>Parametro_Pastoreo</code>, esas mandan sobre estos valores (así todos los dispositivos calculan igual).</p>
       <div class="grid2">
         ${fNum('pesoKg', 'Peso vivo promedio por animal', s.pesoKg, 'kg', 'placeholder="Opcional"')}
-        ${fNum('consumoPorc', 'Consumo diario', s.consumoPorc, '% del peso vivo', 'placeholder="Definir"')}
+        ${fNum('consumoPorc', 'Consumo diario mínimo', s.consumoPorc, '% del peso vivo')}
+        ${fNum('consumoMaxPorc', 'Consumo diario máximo', s.consumoMaxPorc, '% del peso vivo', 'placeholder="15"')}
         ${fSel('baseConsumo', 'El consumo está expresado en', ['FV', 'MS'], s.baseConsumo)}
         ${fNum('msDefecto', '% MS por defecto (si la base es MS)', s.msDefecto, '%', 'placeholder="Si el aforo no lo midió"')}
         ${fNum('despPorc', 'Desperdicio', s.despPorc, '%')}
@@ -841,7 +843,7 @@ async function vistaAjustes() {
     const fd = new FormData($('#frm'));
     await DB.setKv('settings', { url: String(fd.get('url')).trim(), token: String(fd.get('token')).trim(),
       metaKgHa: DEFAULT_SETTINGS.metaKgHa, phCritico: num(fd.get('phCritico')) || DEFAULT_SETTINGS.phCritico,
-      pesoKg: num(fd.get('pesoKg')), consumoPorc: num(fd.get('consumoPorc')), baseConsumo: fd.get('baseConsumo') === 'MS' ? 'MS' : 'FV',
+      pesoKg: num(fd.get('pesoKg')), consumoPorc: num(fd.get('consumoPorc')), consumoMaxPorc: num(fd.get('consumoMaxPorc')), baseConsumo: fd.get('baseConsumo') === 'MS' ? 'MS' : 'FV',
       msDefecto: num(fd.get('msDefecto')), despPorc: num(fd.get('despPorc')) === '' ? DEFAULT_SETTINGS.despPorc : num(fd.get('despPorc')),
       periodoDias: num(fd.get('periodoDias')) || DEFAULT_SETTINGS.periodoDias, loteAnimales: num(fd.get('loteAnimales')), pesoTotal: num(fd.get('pesoTotal')),
       climaLat: num(fd.get('climaLat')) === '' ? DEFAULT_SETTINGS.climaLat : num(fd.get('climaLat')),
@@ -1068,7 +1070,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

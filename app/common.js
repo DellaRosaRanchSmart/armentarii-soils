@@ -68,8 +68,14 @@ const DB = {
 // climaLat/climaLng: punto medio aproximado entre los sectores C4 y H2 (editable en Ajustes).
 const DEFAULT_SETTINGS = { url: '', token: '', metaKgHa: 15000, phCritico: 5.5, climaLat: 8.69, climaLng: -75.89,
   // Pastoreo: 30 % de desperdicio y 3 días de referencia los definió la finca. Peso, consumo y lote los define el equipo técnico.
-  despPorc: 30, periodoDias: 3, pesoKg: '', consumoPorc: '', baseConsumo: 'FV', msDefecto: '', loteAnimales: '', pesoTotal: '' };
-async function getSettings() { return Object.assign({}, DEFAULT_SETTINGS, await DB.kv('settings', {})); }
+  // Consumo de forraje verde: 10 % a 15 % del peso vivo, rango indicado por la finca (oct. 2026).
+  despPorc: 30, periodoDias: 3, pesoKg: '', consumoPorc: 10, consumoMaxPorc: 15, baseConsumo: 'FV', msDefecto: '', loteAnimales: '', pesoTotal: '' };
+async function getSettings() {
+  const guardado = Object.assign({}, await DB.kv('settings', {}));
+  // Un campo guardado vacío no tapa un valor por defecto (p. ej. el consumo 10–15 %).
+  Object.keys(guardado).forEach(k => { if (guardado[k] === '' && DEFAULT_SETTINGS[k] !== '' && DEFAULT_SETTINGS[k] !== undefined) delete guardado[k]; });
+  return Object.assign({}, DEFAULT_SETTINGS, guardado);
+}
 
 // ---------------- API (Google Apps Script) ----------------
 /* POST sin cabecera Content-Type => "simple request" (text/plain), así el navegador
@@ -123,12 +129,13 @@ function calcAforo(pesos, metodoM2, areaHa) {
 
 // ---------------- Pastoreo: capacidad de carga y días ----------------
 const PARAM_HOJA = { desperdicio_porc: 'despPorc', periodo_dias: 'periodoDias', peso_kg: 'pesoKg', consumo_porc_pv: 'consumoPorc',
+  consumo_min_porc_pv: 'consumoPorc', consumo_max_porc_pv: 'consumoMaxPorc',
   base_consumo: 'baseConsumo', ms_porc_defecto: 'msDefecto', animales_lote: 'loteAnimales', peso_total_lote_kg: 'pesoTotal' };
 /** Parámetros de pastoreo: los de Ajustes de este dispositivo, reemplazados por los de 5_Catalogos
     (Categoria = Parametro_Pastoreo) para que todos los dispositivos calculen igual. */
 async function paramsPastoreo() {
   const s = await getSettings();
-  const P = { despPorc: s.despPorc, periodoDias: s.periodoDias, pesoKg: s.pesoKg, consumoPorc: s.consumoPorc,
+  const P = { despPorc: s.despPorc, periodoDias: s.periodoDias, pesoKg: s.pesoKg, consumoPorc: s.consumoPorc, consumoMaxPorc: s.consumoMaxPorc,
     baseConsumo: s.baseConsumo, msDefecto: s.msDefecto, loteAnimales: s.loteAnimales, pesoTotal: s.pesoTotal, fuente: 'Ajustes' };
   const cat = await DB.kv('catalogos', null);
   (cat ? cat.items : []).filter(c => String(c.Categoria || '').toLowerCase().replace(/[\s_]/g, '') === 'parametropastoreo').forEach(c => {
@@ -138,7 +145,7 @@ async function paramsPastoreo() {
     P[k] = k === 'baseConsumo' ? (/^ms|seca/i.test(v) ? 'MS' : 'FV') : num(v);
     P.fuente = '5_Catalogos';
   });
-  ['despPorc', 'periodoDias', 'pesoKg', 'consumoPorc', 'msDefecto', 'loteAnimales', 'pesoTotal'].forEach(k => (P[k] = num(P[k])));
+  ['despPorc', 'periodoDias', 'pesoKg', 'consumoPorc', 'consumoMaxPorc', 'msDefecto', 'loteAnimales', 'pesoTotal'].forEach(k => (P[k] = num(P[k])));
   return P;
 }
 
@@ -148,7 +155,7 @@ async function paramsPastoreo() {
     aprovechable = cantidad × (1 − desperdicio)
     capacidad (kg de peso vivo por N días) = aprovechable ÷ (consumo% × N); en animales = ÷ peso promedio
     días de pastoreo = aprovechable ÷ (peso total del lote × consumo%) */
-function calcPastoreo(cantidadFV, msPorc, P, lote = {}) {
+function calcPastoreoUno(cantidadFV, msPorc, P, lote = {}) {
   const falta = [];
   if (!(P.consumoPorc > 0)) falta.push('consumo (% del peso vivo)');
   const ms = num(msPorc) !== '' ? num(msPorc) : P.msDefecto;
@@ -172,11 +179,26 @@ function calcPastoreo(cantidadFV, msPorc, P, lote = {}) {
     capAnimales: P.pesoKg > 0 ? capKgPV / P.pesoKg : '', demandaAnimal: P.pesoKg > 0 ? P.pesoKg * cons : '',
     pesoTotal, animales, demandaLote: pesoTotal !== '' ? pesoTotal * cons : '', dias: pesoTotal !== '' ? aprovechable / (pesoTotal * cons) : '' };
 }
-/** "22 animales" si hay peso promedio; si no, "8.800 kg PV". */
+/** Con rango de consumo (mín–máx): devuelve el resultado CONSERVADOR (consumo máximo, menos capacidad y menos días)
+    y en .alto el OPTIMISTA (consumo mínimo). Lo que se guarda en la hoja y se grafica es el conservador. */
+function calcPastoreo(cantidadFV, msPorc, P, lote = {}) {
+  const opt = calcPastoreoUno(cantidadFV, msPorc, P, lote);
+  if (!opt.listo || !(P.consumoMaxPorc > P.consumoPorc)) return Object.assign(opt, { rango: false });
+  const cons = calcPastoreoUno(cantidadFV, msPorc, Object.assign({}, P, { consumoPorc: P.consumoMaxPorc }), lote);
+  return Object.assign(cons, { rango: true, alto: opt });
+}
+const capNum = r => (r.capAnimales !== '' ? Math.floor(r.capAnimales) : Math.round(r.capKgPV));
+/** "19 – 28 animales" (o "6.100 – 9.200 kg PV" sin peso promedio). */
 function textoCapacidad(r, porHa) {
   if (!r || !r.listo) return '—';
-  return r.capAnimales !== '' ? `${fmt(Math.floor(r.capAnimales), 0)} animales${porHa ? '/ha' : ''}` : `${fmt(r.capKgPV, 0)} kg PV${porHa ? '/ha' : ''}`;
+  const u = (r.capAnimales !== '' ? ' animales' : ' kg PV') + (porHa ? '/ha' : '');
+  return r.rango ? `${fmt(capNum(r), 0)} – ${fmt(capNum(r.alto), 0)}${u}` : `${fmt(capNum(r), 0)}${u}`;
 }
+function textoDias(r) {
+  if (!r || !r.listo || r.dias === '') return '—';
+  return r.rango ? `${fmt(r.dias, 1)} – ${fmt(r.alto.dias, 1)}` : fmt(r.dias, 1);
+}
+const textoConsumo = P => (P.consumoMaxPorc > P.consumoPorc ? `${fmt(P.consumoPorc, 1)} – ${fmt(P.consumoMaxPorc, 1)} %` : `${fmt(P.consumoPorc, 1)} %`);
 function textoLote(r) {
   if (!r.pesoTotal) return '';
   return r.animales !== '' && r.animales ? `${fmt(r.animales, 0)} animales (${fmt(r.pesoTotal, 0)} kg PV)` : `${fmt(r.pesoTotal, 0)} kg PV`;

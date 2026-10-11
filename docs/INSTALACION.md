@@ -111,12 +111,15 @@ El peso de los animales se carga a mano, de cualquiera de estas formas:
 Se puede poner en Ajustes (para todo el circuito) o escribir en cada aforo ("Animales a pastorear" / "Peso total del lote"),
 que tiene prioridad. Los potreros sin área no tienen oferta total, así que no se calcula su capacidad.
 
-**El consumo (% del peso vivo) no tiene valor por defecto**: lo define el equipo técnico. Para que todos los dispositivos
-calculen igual, póngalo en `5_Catalogos` con *Categoria* = `Parametro_Pastoreo`:
+**Consumo:** por defecto **10 % a 15 % del peso vivo en forraje verde** (rango indicado por la finca). Capacidad y días se
+muestran como rango; el valor **conservador** (consumo 15 %) es el que se guarda en la hoja y se grafica. Para un solo valor,
+ponga el mismo número en mínimo y máximo. Para que todos los dispositivos calculen igual, use `5_Catalogos` con
+*Categoria* = `Parametro_Pastoreo`:
 
 | Nombre_Item | Descripcion_Cientifica (valor) |
 |---|---|
-| `Consumo_Porc_PV` | consumo diario de forraje verde en % del peso vivo |
+| `Consumo_Min_Porc_PV` | consumo mínimo de forraje verde en % del peso vivo, p. ej. `10` |
+| `Consumo_Max_Porc_PV` | consumo máximo, p. ej. `15` |
 | `Base_Consumo` | `FV` |
 | `Desperdicio_Porc` | `30` |
 | `Periodo_Dias` | `3` |
