@@ -61,9 +61,9 @@ function bandasPh() {
   const crit = S.phCritico;
   return [
     { max: 5.0, label: 'Muy ácido (< 5,0)', color: '#d03b3b' },
-    { max: crit, label: `Ácido (5,0 – ${fmt(crit, 1)})`, color: '#ec835a' },
-    { max: 7.0, label: `Adecuado (${fmt(crit, 1)} – 7,0)`, color: '#0ca30c' },
-    { max: Infinity, label: 'Alcalino (> 7,0)', color: '#2a78d6' },
+    { max: crit, label: `Ácido, posible aluminio (5,0 – ${fmt(crit, 1)})`, color: '#ec835a' },
+    { max: 6.5, label: `Adecuado (${fmt(crit, 1)} – 6,5)`, color: '#0ca30c' },
+    { max: Infinity, label: 'Neutro a alcalino (> 6,5)', color: '#2a78d6' },
   ];
 }
 const bandaPh = ph => bandasPh().find(b => ph < b.max);
@@ -392,7 +392,97 @@ function renderForrajes(d) {
   ], hist);
 }
 
+// ---------- Bioindicadores: arvenses vs. análisis de suelo ----------
+const ETIQUETAS = {
+  acidez: 'Acidez', acidez_extrema: 'Acidez extrema (pH < 5)', aluminio: 'Toxicidad de aluminio', p_bajo: 'Fósforo bajo',
+  p_desequilibrio: 'Desequilibrio de fósforo', p_alto: 'Fósforo alto', k_bajo: 'Potasio bajo', k_alto: 'Potasio alto',
+  ca_bajo: 'Calcio bajo', b_bajo: 'Boro bajo', n_alto: 'Nitrógeno alto', n_bajo: 'Nitrógeno bajo', mo_baja: 'Materia orgánica baja',
+  mo_alta: 'Materia orgánica alta', compactacion: 'Compactación / pisoteo', drenaje_malo: 'Mal drenaje / encharcamiento',
+  erosion: 'Erosión / costra', suelo_desnudo: 'Suelo descubierto', sales: 'Sales en superficie', fertilidad_baja: 'Baja fertilidad',
+  suelo_fertil: 'Suelo fértil', subpastoreo: 'Baja presión de pastoreo',
+};
+/** Arvenses escritas a mano en los marcos de aforo ("Dormidera, estrella blanca") → especies de la lista. */
+function arvensesDeTexto(txt) {
+  return String(txt || '').split(/[,;/]| y /i).map(t => buscarArvense(t)).filter(Boolean);
+}
+/** Compara una indicación con lo medido en los puntos de suelo del potrero. → {estado:'si'|'no'|'nd', texto} */
+function evidenciaSuelo(tag, P) {
+  const prom = col => avg(P.map(p => p[col]));
+  const rango = col => RANGOS.find(r => r[0] === col);
+  const quim = (col, quiere) => {
+    const v = prom(col), r = rango(col);
+    if (v === '') return { estado: 'nd', texto: `${r ? r[1] : col}: sin análisis` };
+    const e = estadoDe(v, r);
+    const t = `${r[1]} ${fmt(v, 2)}${r[3] ? ' ' + r[3] : ''} (ref. ${textoRango(r)})`;
+    if (e === 'sinrango') return { estado: 'nd', texto: `${r[1]} ${fmt(v, 2)}${r[3] ? ' ' + r[3] : ''} · sin rango de referencia` };
+    return { estado: quiere.includes(e) ? 'si' : 'no', texto: t };
+  };
+  const campo = (cols, si, no) => {
+    const vals = P.flatMap(p => cols.map(c => String(p[c] || '').trim())).filter(Boolean);
+    if (!vals.length) return { estado: 'nd', texto: 'sin observación de campo' };
+    const hay = vals.some(v => si.some(x => v.toLowerCase().includes(x)));
+    const nohay = vals.every(v => no.some(x => v.toLowerCase() === x));
+    return { estado: hay ? 'si' : nohay ? 'no' : 'nd', texto: [...new Set(vals)].join(', ') };
+  };
+  switch (tag) {
+    case 'acidez': { const v = prom('pH'); return v === '' ? { estado: 'nd', texto: 'pH: sin análisis' } : { estado: v < 5.5 ? 'si' : 'no', texto: `pH ${fmt(v, 2)} (ácido si < 5,5)` }; }
+    case 'acidez_extrema': { const v = prom('pH'); return v === '' ? { estado: 'nd', texto: 'pH: sin análisis' } : { estado: v < 5 ? 'si' : 'no', texto: `pH ${fmt(v, 2)} (extrema si < 5,0)` }; }
+    case 'aluminio': { const v = prom('pH'); return { estado: 'nd', texto: v === '' ? 'sin análisis' : `pH ${fmt(v, 2)} · aluminio no medido (SOILO no lo mide)` }; }
+    case 'p_bajo': return quim('P_ppm', ['bajo']);
+    case 'p_alto': return quim('P_ppm', ['alto']);
+    case 'p_desequilibrio': return quim('P_ppm', ['bajo', 'alto']);
+    case 'k_bajo': return quim('K_ppm', ['bajo']);
+    case 'k_alto': return quim('K_ppm', ['alto']);
+    case 'n_alto': return quim('N_ppm', ['alto']);
+    case 'n_bajo': return quim('N_ppm', ['bajo']);
+    case 'ca_bajo': return quim('Ca_ppm', ['bajo']);
+    case 'b_bajo': return quim('B_ppm', ['bajo']);
+    case 'mo_baja': return quim('MO_porc', ['bajo']);
+    case 'mo_alta': return quim('MO_porc', ['alto']);
+    case 'sales': return quim('Salinidad', ['alto']);
+    case 'compactacion': return campo(['Compactacion', 'Pisoteo'], ['media', 'alta', 'poco', 'mucho'], ['baja', 'no', 'nula']);
+    case 'drenaje_malo': return campo(['Encharcamiento', 'Humedad_Aparente'], ['sí', 'si', 'saturado'], ['no', 'seco', 'húmedo']);
+    case 'erosion': return campo(['Erosion', 'Costra_Superficial'], ['leve', 'moderada', 'severa', 'sí', 'si'], ['ninguna', 'no']);
+    case 'suelo_desnudo': { const v = prom('Suelo_Desnudo_Porc'); return { estado: 'nd', texto: v === '' ? 'sin observación' : `suelo desnudo ${fmt(v, 0)} % (sin umbral definido)` }; }
+    default: return { estado: 'nd', texto: 'no se mide en el análisis de suelo' };
+  }
+}
+const EST_EVID = { si: '<span class="st st-ok">✓ Coincide</span>', no: '<span class="st st-bajo">✗ No coincide</span>', nd: '<span class="st st-sinrango">· Sin dato</span>' };
+
+function renderBioindicadores(d) {
+  const potDeAforo = Object.fromEntries((d.aforos || []).map(a => [a.ID_Aforo, String(a.Potrero || '')]));
+  const porPot = {};
+  const add = (pot, sp, fuente) => {
+    if (!sp) return;
+    const k = pot || 'Sin potrero';
+    porPot[k] = porPot[k] || { especies: {}, puntos: [] };
+    const e = porPot[k].especies[sp[0]] = porPot[k].especies[sp[0]] || { sp, fuentes: new Set() };
+    e.fuentes.add(fuente);
+  };
+  d.arvenses.forEach(a => add(a._potrero, buscarArvense(a.Nombre_Arvense), 'punto de suelo'));
+  d.detalles.forEach(m => arvensesDeTexto(m.Arvenses_Marco).forEach(sp => add(potDeAforo[m.ID_Aforo], sp, 'marco de aforo')));
+  d.puntos.forEach(p => { const k = p.Potrero || 'Sin potrero'; if (porPot[k]) porPot[k].puntos.push(p); });
+  const pots = Object.entries(porPot).sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }));
+  let si = 0, no = 0;
+  const html = pots.map(([pot, info]) => {
+    const especies = Object.values(info.especies);
+    const tags = {};
+    especies.forEach(e => e.sp[4].forEach(t => (tags[t] = tags[t] || []).push(e.sp[1][0])));
+    const filas = Object.entries(tags).sort((a, b) => b[1].length - a[1].length).map(([t, quien]) => {
+      const ev = info.puntos.length ? evidenciaSuelo(t, info.puntos) : { estado: 'nd', texto: 'sin puntos de suelo en este potrero' };
+      if (ev.estado === 'si') si++; if (ev.estado === 'no') no++;
+      return `<tr><td>${esc(ETIQUETAS[t] || t)}</td><td>${esc(quien.join(', '))}</td><td>${esc(ev.texto)}</td><td>${EST_EVID[ev.estado]}</td></tr>`;
+    }).join('');
+    return `<div class="bio"><h4>${esc(pot)} <span class="muted small">· ${especies.length} especie${especies.length > 1 ? 's' : ''} · ${info.puntos.length} punto${info.puntos.length === 1 ? '' : 's'} de suelo</span></h4>
+      <p class="small">${especies.map(e => `<span class="chip" title="${esc(e.sp[2])}">${esc(e.sp[1][0])}<small> (${[...e.fuentes].join(', ')})</small></span>`).join(' ')}</p>
+      <div class="scroll"><table><thead><tr><th>Lo que indican</th><th>Arvenses</th><th>Lo que mide el suelo</th><th>Resultado</th></tr></thead><tbody>${filas}</tbody></table></div></div>`;
+  }).join('');
+  $('#tBio').innerHTML = pots.length ? html : '<p class="muted">No hay arvenses de la lista de bioindicadoras registradas en el filtro.</p>';
+  $('#resBio').innerHTML = si + no ? `De las indicaciones que se pueden comprobar con el suelo, <b>${si}</b> coinciden y <b>${no}</b> no coinciden.` : '';
+}
+
 function renderBotanica(d) {
+  renderBioindicadores(d);
   const c = C(), A = d.arvenses;
   const g = Object.entries(groupBy(A, 'Nombre_Arvense')).map(([k, v]) => ({ k, n: v.length, cob: avg(v.map(a => a.Cobertura_Porc)),
     pots: new Set(v.map(a => a._potrero)).size, abund: Object.entries(groupBy(v, 'Abundancia', '—')).sort((a, b) => b[1].length - a[1].length)[0][0] }))

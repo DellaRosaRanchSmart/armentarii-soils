@@ -10,7 +10,9 @@
    Categoria = Rango_Suelo · Nombre_Item = columna (p. ej. Zn_ppm) · Descripcion_Cientifica = "mín-máx"
    (ejemplos: "1.5-3", ">0.75", "<2000"). Esas filas tienen prioridad sobre esta lista. */
 const RANGOS_SUELO = [
-  ['pH', 'pH', 'Acidez', '', 6.0, 7.5, 'SOILO (Pasture Grass)'],
+  // pH: SOILO imprime 6,0–7,5 (rango genérico de cultivos). Para pastos tropicales se usa 5,5–6,5: por debajo de ~5,5
+  // el aluminio se vuelve soluble y tóxico. Referencia general; validar con el agrónomo (SOILO no mide aluminio).
+  ['pH', 'pH', 'Acidez', '', 5.5, 6.5, 'Ref. general pastos tropicales (validar)'],
   ['N_ppm', 'Nitrógeno (N)', 'Macro', 'ppm', 39.3, 150, 'SOILO (Pasture Grass)'],
   ['P_ppm', 'Fósforo (P)', 'Macro', 'ppm', 4.7, 100, 'SOILO (Pasture Grass)'],
   ['K_ppm', 'Potasio (K)', 'Macro', 'ppm', 21.2, 400, 'SOILO (Pasture Grass)'],

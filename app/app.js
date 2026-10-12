@@ -523,8 +523,16 @@ async function vistaPunto(id, jornadaId) {
     </details>
 
     <details class="card" open><summary><h3>Arvenses (${(p.arvenses || []).length})</h3></summary>
+      <p class="small muted">Puede registrar todas las que encuentre en el punto.</p>
+      <details class="picker"><summary class="btn sec small">☑️ Elegir de la lista de bioindicadoras (${ARVENSES.length})</summary>
+        <input type="search" id="buscaArv" placeholder="Buscar por nombre común o científico" autocomplete="off">
+        <div id="listaArv">${ARVENSES.map(a => `<label class="arvopt" data-txt="${esc(normArv(a[1].join(' ') + ' ' + a[2]))}">
+          <input type="checkbox" value="${a[0]}"> <span><b>${esc(a[1][0])}</b> <i class="muted small">${esc(a[2].split(' (')[0])}</i>
+          <small class="muted">${esc(a[1].slice(1).join(', '))}</small></span></label>`).join('')}</div>
+        <button type="button" class="btn small" id="addSel">＋ Agregar seleccionadas</button>
+      </details>
       <div id="arvs"></div>
-      <button type="button" class="btn sec small" id="addArv">＋ Arvense</button>
+      <button type="button" class="btn ghost small" id="addArv">＋ Otra arvense (escribir nombre)</button>
     </details>
 
     <details class="card" open><summary><h3>Fotos y observaciones</h3></summary>
@@ -532,23 +540,49 @@ async function vistaPunto(id, jornadaId) {
       <label class="fld"><span>Observaciones</span><textarea name="Observaciones" rows="3">${esc(f.Observaciones)}</textarea></label>
     </details>
 
-    ${datalist('dlPot', lista('Potrero'))}${datalist('dlColor', lista('Color'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', lista('Arvense'))}
+    ${datalist('dlPot', lista('Potrero'))}${datalist('dlColor', lista('Color'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', [...new Set([...ARVENSES.map(a => a[1][0]), ...lista('Arvense')])])}
     <div class="row gap sticky"><button class="btn">Guardar punto</button>
       ${nuevo ? '' : '<button type="button" class="btn danger ghost" id="btnDel">Eliminar</button>'}</div>
   </form>`;
 
   const frm = $('#frm');
+  const infoArv = nombre => {
+    const m = buscarArvense(nombre);
+    const amb = NOMBRES_AMBIGUOS[normArv(nombre)];
+    if (amb) return `⚠️ "${esc(nombre)}" es nombre común de varias especies (n° ${amb.join(' y ')}). Elija la especie de la lista.`;
+    return m ? `<i>${esc(m[2])}</i> · ${esc(m[3])}` : (String(nombre || '').trim() ? 'No está en la lista de bioindicadoras.' : '');
+  };
   const arvRow = a => `<div class="arv card inner" data-id="${esc(a.id)}">
       <div class="grid3">
         ${fTxt('nombre', 'Arvense', a.nombre, 'dlArv')}
         ${fNum('cobertura', 'Cobertura', a.cobertura, '%')}
         ${fSel('abundancia', 'Abundancia', lista('Abundancia'), a.abundancia)}
       </div>
+      <div class="small muted arvinfo">${infoArv(a.nombre)}</div>
       <div class="row between">${fotoWidget('arv_' + a.id, a.foto, 'Foto')}
       <button type="button" class="btn ghost small danger" data-del-arv>✕ Quitar arvense</button></div>
     </div>`;
   $('#arvs').innerHTML = (p.arvenses || []).map(arvRow).join('');
   $('#addArv').onclick = () => { $('#arvs').insertAdjacentHTML('beforeend', arvRow({ id: uid('A') })); dirty = true; };
+  $('#buscaArv').addEventListener('input', e => {
+    const q = normArv(e.target.value);
+    $$('.arvopt', frm).forEach(l => (l.hidden = q && !l.dataset.txt.includes(q)));
+  });
+  $('#addSel').onclick = () => {
+    const ya = new Set($$('.arv [name=nombre]', frm).map(i => normArv(i.value)));
+    let n = 0;
+    $$('#listaArv input:checked', frm).forEach(cb => {
+      const a = ARVENSES.find(x => x[0] === +cb.value);
+      if (a && !ya.has(normArv(a[1][0]))) { $('#arvs').insertAdjacentHTML('beforeend', arvRow({ id: uid('A'), nombre: a[1][0] })); n++; }
+      cb.checked = false;
+    });
+    frm.querySelector('.picker').open = false;
+    dirty = true;
+    toast(n ? `${n} arvense${n > 1 ? 's' : ''} agregada${n > 1 ? 's' : ''}: complete cobertura y abundancia` : 'Ya estaban en la lista');
+  };
+  $('#arvs').addEventListener('input', e => {
+    if (e.target.name === 'nombre') $('.arvinfo', e.target.closest('.arv')).innerHTML = infoArv(e.target.value);
+  });
   $('#arvs').addEventListener('click', e => { if (e.target.dataset.delArv !== undefined) { e.target.closest('.arv').remove(); dirty = true; } });
   activarFotos(frm, p.jornadaId, () => `${p.id}_${(frm.Potrero.value || 'SP').replace(/[^\w-]+/g, '')}`);
   pintarPrevias(frm);
@@ -590,7 +624,8 @@ async function vistaPunto(id, jornadaId) {
     p.fotoSuelo = g('fotoSuelo'); p.fotoPano = g('fotoPano');
     p.arvenses = $$('.arv', frm).map(el => {
       const aid = el.dataset.id;
-      return { id: aid, nombre: $('[name=nombre]', el).value.trim(), cobertura: num($('[name=cobertura]', el).value),
+      const nom = $('[name=nombre]', el).value.trim(), m = buscarArvense(nom);
+      return { id: aid, nombre: m ? m[1][0] : nom, cientifico: m ? m[2] : '', cobertura: num($('[name=cobertura]', el).value),
         abundancia: $('[name=abundancia]', el).value, foto: $(`[name="arv_${CSS.escape(aid)}"]`, el).value };
     }).filter(a => a.nombre);
     if (!p.f.Potrero && !confirm('No indicó potrero. ¿Guardar igual?')) return;
@@ -664,7 +699,7 @@ async function vistaAforo(id, jornadaId) {
         ${fNum('animales', 'Animales a pastorear', a.x.animales, '', `placeholder="${P.loteAnimales ? `Ajustes: ${P.loteAnimales}` : 'Opcional'}"`)}
         ${fNum('pesoTotal', 'Peso total del lote', a.x.pesoTotal, 'kg PV', `placeholder="${P.pesoTotal ? `Ajustes: ${P.pesoTotal}` : 'Opcional'}"`)}
       </div>
-      ${datalist('dlPot', lista('Potrero'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', lista('Arvense'))}
+      ${datalist('dlPot', lista('Potrero'))}${datalist('dlPasto', lista('Pasto'))}${datalist('dlArv', [...new Set([...ARVENSES.map(a => a[1][0]), ...lista('Arvense')])])}
     </div>
 
     <div class="card">
@@ -1032,6 +1067,7 @@ function construirFilas(lote, jornadas, urlFoto, P) {
         { Foto_Suelo: urlFoto[r.fotoSuelo] || '', Foto_Panoramica: urlFoto[r.fotoPano] || '' }));
       for (const a of r.arvenses || [])
         out.arvenses.push({ ID_Arvense: a.id, ID_Punto: r.id, Nombre_Arvense: a.nombre, Cobertura_Porc: a.cobertura,
+          Nombre_Cientifico: a.cientifico || (buscarArvense(a.nombre) || [])[2] || '', Indicador_Suelo: (buscarArvense(a.nombre) || [])[3] || '',
           Abundancia: a.abundancia, Foto_Arvense: urlFoto[a.foto] || '', Potrero: r.f.Potrero, Fecha: fecha });
     }
     if (r.tipo === 'aforo') {
@@ -1070,7 +1106,7 @@ async function router() {
   } catch (err) { view().innerHTML = `<p class="card">Error: ${esc(err.message)}</p>`; }
 }
 
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 (async function init() {
   await DB.open();
   const cat = await DB.kv('catalogos', null);

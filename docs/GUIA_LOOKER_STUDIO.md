@@ -30,21 +30,22 @@ y se envía por correo **lunes, miércoles y viernes por la tarde**.
    | `pH`, `N_ppm` … `Zn_ppm`, `MO_porc`, `Salinidad`, `*_Porc` | Número | **Promedio** |
    | `Potrero`, `ID_Punto`, `Color`, `Compactacion`… | Texto | — |
 
-4. **Agregar campos calculados** (botón *Agregar un campo*). Rangos = los óptimos de SOILO para pasto
-   (cámbielos si el agrónomo define otros):
+4. **Agregar campos calculados** (botón *Agregar un campo*). Rangos = los de la app: pH 5,5 – 6,5
+   (referencia general para pastos tropicales; por debajo de 5,5 aumenta el riesgo de aluminio) y, para nutrientes,
+   los óptimos de SOILO para pasto. Cámbielos si el agrónomo define otros:
 
    **Estado_pH**
    ```
    CASE
      WHEN pH IS NULL THEN "Sin dato"
-     WHEN pH < 6 THEN "↓ Bajo"
-     WHEN pH > 7.5 THEN "↑ Alto"
+     WHEN pH < 5.5 THEN "↓ Bajo"
+     WHEN pH > 6.5 THEN "↑ Alto"
      ELSE "✓ Adecuado"
    END
    ```
    **Fuera_pH** (1 si está fuera de rango; su *Promedio* = % de puntos fuera de rango)
    ```
-   CASE WHEN pH IS NULL THEN NULL WHEN pH < 6 OR pH > 7.5 THEN 1 ELSE 0 END
+   CASE WHEN pH IS NULL THEN NULL WHEN pH < 5.5 OR pH > 6.5 THEN 1 ELSE 0 END
    ```
    Repita la idea para los demás (mínimo – máximo):
 
@@ -91,7 +92,7 @@ Así cada potrero cuenta una sola vez (su aforo más reciente). Para ver la evol
 | Gráfico | Configuración |
 |---|---|
 | **Mapa de burbujas** (Google Maps) | Ubicación: `Ubicacion` · Color: `Estado_pH` · Tooltip: `Potrero` |
-| **Barras** pH por potrero | Dimensión `Potrero` · Métrica `pH` (Promedio) · *Línea de referencia* constante **6** |
+| **Barras** pH por potrero | Dimensión `Potrero` · Métrica `pH` (Promedio) · *Línea de referencia* constante **5,5** |
 | **Tabla** de nutrientes | Dimensión `Potrero` · Métricas `pH`, `N_ppm`, `P_ppm`, `K_ppm`, `MO_porc` (Promedio) · *Formato condicional*: rojo si fuera de rango |
 | **Barras** "% fuera de rango por nutriente" | Métricas `Fuera_pH`, `Fuera_N`, `Fuera_P`, `Fuera_K`, `Fuera_MO` (Promedio, formato %) |
 
@@ -110,8 +111,12 @@ Así cada potrero cuenta una sola vez (su aforo más reciente). Para ver la evol
 | Gráfico | Configuración |
 |---|---|
 | **Circular** | Fuente 2_Arvenses · Dimensión `Nombre_Arvense` · Métrica *Recuento de registros* |
-| **Tabla** | `Nombre_Arvense`, `Potrero`, `Cobertura_Porc` (Promedio), `Abundancia` |
+| **Tabla** | `Nombre_Arvense`, `Nombre_Cientifico`, `Potrero`, `Cobertura_Porc` (Promedio), `Abundancia` |
+| **Tabla** "qué indican" | `Potrero`, `Nombre_Arvense`, `Indicador_Suelo` (lo que indica según la lista de bioindicadoras de la finca) |
 | **Tabla** arvenses en marcos de aforo | Fuente 4_Aforos_Detalle · `Potrero`, `Arvenses_Marco` (texto libre por marco) |
+
+> El cruce automático arvenses ↔ análisis de suelo (✓ coincide / ✗ no coincide) está en el dashboard de la app,
+> pestaña **Botánica**; en Looker se muestra el texto `Indicador_Suelo` para leerlo junto a la tabla de nutrientes.
 
 ---
 

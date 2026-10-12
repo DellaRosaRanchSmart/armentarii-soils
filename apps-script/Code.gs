@@ -28,7 +28,8 @@ var HEADERS = {
     'Pedregosidad', 'Pasto_Predominante', 'Cobertura_Pasto_Porc', 'Foto_Suelo', 'Foto_Panoramica', 'Observaciones',
     // columnas agregadas: facilitan Looker Studio y recogen lo que piden las fichas de campo
     'Fecha', 'Precision_GPS_m', 'Humedad_Aparente'],
-  arvenses: ['ID_Arvense', 'ID_Punto', 'Nombre_Arvense', 'Cobertura_Porc', 'Abundancia', 'Foto_Arvense', 'Fecha', 'Potrero'],
+  arvenses: ['ID_Arvense', 'ID_Punto', 'Nombre_Arvense', 'Cobertura_Porc', 'Abundancia', 'Foto_Arvense', 'Fecha', 'Potrero',
+    'Nombre_Cientifico', 'Indicador_Suelo'],
   aforos: ['ID_Aforo', 'ID_Jornada', 'Potrero', 'Area_Ha', 'Metodo_M2', 'Promedio_Peso_g', 'Kg_Ha_FV', 'Oferta_Total_Kg', 'Foto_General',
     'Fecha', 'Ubicacion', 'Pasto_Predominante', 'Estado_Potrero', 'Dias_Descanso', 'N_Muestras', 'CV_Porc', 'MS_Porc', 'Kg_MS_Ha', 'Observaciones',
     'Animales_Lote', 'Peso_Total_Lote_Kg', 'Forraje_Aprovechable_Kg', 'Capacidad_Kg_PV_Ref', 'Capacidad_Animales_Ref', 'Dias_Pastoreo',

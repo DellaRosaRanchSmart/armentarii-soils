@@ -148,3 +148,14 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); out
 .pastoreo { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .pastoreo .kpis { margin-top: 8px; }
 .aviso-param { background: var(--warn-bg); border-radius: 8px; padding: 8px 10px; }
+/* ---------- Arvenses ---------- */
+.picker { margin: 6px 0 10px; }
+.picker > summary { list-style: none; display: inline-flex; }
+.picker > summary::before { content: none; }
+.picker[open] { background: var(--bg); border-radius: 12px; padding: 10px; }
+#buscaArv { margin: 8px 0; }
+#listaArv { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: 8px; }
+.arvopt { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.arvopt input { width: 20px; min-height: 20px; margin-top: 2px; flex: 0 0 auto; }
+.arvopt span { display: flex; flex-direction: column; }
+.arvinfo { margin: 2px 0 6px; line-height: 1.35; }
